@@ -1,0 +1,78 @@
+﻿Zone,Province,Region,Climate,area_id,ADM1_TH
+Zone01,Chiang Mai,Upper North,North,1,เชียงใหม่
+Zone01,Chiang Rai,Upper North,North,2,เชียงราย
+Zone01,Lampang,Upper North,North,3,ลำปาง
+Zone01,Lamphun,Upper North,North,4,ลำพูน
+Zone01,Mae Hong Son,Upper North,North,5,แม่ฮ่องสอน
+Zone01,Nan,Upper North,North,6,น่าน
+Zone01,Phayao,Upper North,North,7,พะเยา
+Zone01,Phrae,Upper North,North,8,แพร่
+Zone02,Phetchabun,Lower North,North,9,เพชรบูรณ์
+Zone02,Phitsanulok,Lower North,North,10,พิษณุโลก
+Zone02,Sukhothai,Lower North,North,11,สุโขทัย
+Zone02,Tak,Lower North,North,12,ตาก
+Zone02,Uttaradit,Lower North,North,13,อุตรดิตถ์
+Zone03,Chai Nat,Upper Central,Central,14,ชัยนาท
+Zone03,Kamphaeng Phet,Upper Central,Central,15,กำแพงเพชร
+Zone03,Nakhon Sawan,Upper Central,Central,16,นครสวรรค์
+Zone03,Phichit,Upper Central,North,17,พิจิตร
+Zone03,Uthai Thani,Upper Central,Central,18,อุทัยธานี
+Zone04,Ang Thong,Lower Central,Central,19,อ่างทอง
+Zone04,Lop Buri,Lower Central,Central,20,ลพบุรี
+Zone04,Nakhon Nayok,Lower Central,Central,21,นครนายก
+Zone04,Nonthaburi,Lower Central,Central,22,นนทบุรี
+Zone04,P.Nakhon S.Ayutthaya,Lower Central,Central,23,พระนครศรีอยุธยา
+Zone04,Pathum Thani,Lower Central,Central,24,ปทุมธานี
+Zone04,Saraburi,Lower Central,Central,25,สระบุรี
+Zone04,Sing Buri,Lower Central,Central,26,สิงห์บุรี
+Zone05,Kanchanaburi,West,Central,27,กาญจนบุรี
+Zone05,Nakhon Pathom,West,Central,28,นครปฐม
+Zone05,Phetchaburi,West,Eastern South,29,เพชรบุรี
+Zone05,Prachuap Khiri Khan,West,Eastern South,30,ประจวบคีรีขันธ์
+Zone05,Ratchaburi,West,Central,31,ราชบุรี
+Zone05,Samut Sakhon,West,Central,32,สมุทรสาคน
+Zone05,Samut Songkhram,West,Central,33,สมุทรสงคราม
+Zone05,Suphan Buri,West,Central,34,สุพรรณบุรี
+Zone06,Chachoengsao,East,East,35,ฉะเชิงเทรา
+Zone06,Chanthaburi,East,East,36,จันทบุรี
+Zone06,Chon Buri,East,East,37,ชลบุรี
+Zone06,Prachin Buri,East,East,38,ปราจีนบุรี
+Zone06,Rayong,East,East,39,ระยอง
+Zone06,Sa Kaeo,East,East,40,สระแก้ว
+Zone06,Samut Prakan,East,East,41,สมุทรปราการ
+Zone06,Trat,East,East,42,ตราด
+Zone07,Kalasin,Central Northeast,Northeast,43,กาฬสินธุ์
+Zone07,Khon Kaen,Central Northeast,Northeast,44,ขอนแก่น
+Zone07,Maha Sarakham,Central Northeast,Northeast,45,มหาสารคาม
+Zone07,Roi Et,Central Northeast,Northeast,46,ร้อยเอ็ด
+Zone08,Bungkan,Upper Northeast,Northeast,47,บึงกาฬ
+Zone08,Loei,Upper Northeast,Northeast,48,เลย
+Zone08,Nakhon Phanom,Upper Northeast,Northeast,49,นครพนม
+Zone08,Nong Bua Lam Phu,Upper Northeast,Northeast,50,หนองบัวลำภู
+Zone08,Nong Khai,Upper Northeast,Northeast,51,หนองคาย
+Zone08,Sakon Nakhon,Upper Northeast,Northeast,52,สกลนคร
+Zone08,Udon Thani,Upper Northeast,Northeast,53,อุดรธานี
+Zone09,Buri Ram,Lower Northeast,Northeast,54,บุรีรัมย์
+Zone09,Chaiyaphum,Lower Northeast,Northeast,55,ชัยภูมิ
+Zone09,Nakhon Ratchasima,Lower Northeast,Northeast,56,นครราชสีมา
+Zone09,Surin,Lower Northeast,Northeast,57,สุรินทร์
+Zone10,Amnat Charoen,Eastern Northeast,Northeast,58,อำนาจเจริญ
+Zone10,Mukdahan,Eastern Northeast,Northeast,59,มุกดาหาร
+Zone10,Si Sa Ket,Eastern Northeast,Northeast,60,ศรีสะเกษ
+Zone10,Ubon Ratchathani,Eastern Northeast,Northeast,61,อุบลราชธานี
+Zone10,Yasothon,Eastern Northeast,Northeast,62,ยโสธร
+Zone11,Chumphon,Upper South,Eastern South,63,ชุมพร
+Zone11,Krabi,Upper South,Western South,64,กระบี่
+Zone11,Nakhon Si Thammarat,Upper South,Eastern South,65,นครศรีธรรมราช
+Zone11,Phangnga,Upper South,Western South,66,พังงา
+Zone11,Phuket,Upper South,Western South,67,ภูเก็ต
+Zone11,Ranong,Upper South,Western South,68,ระนอง
+Zone11,Surat Thani,Upper South,Eastern South,69,สุราษฎร์ธานี
+Zone12,Narathiwat,Lower South,Eastern South,70,นราธิวาส
+Zone12,Pattani,Lower South,Eastern South,71,ปัตตานี
+Zone12,Phatthalung,Lower South,Eastern South,72,พัทลุง
+Zone12,Satun,Lower South,Western South,73,สตูล
+Zone12,Songkhla,Lower South,Eastern South,74,สงขลา
+Zone12,Trang,Lower South,Western South,75,ตรัง
+Zone12,Yala,Lower South,Eastern South,76,ยะลา
+Zone13,Bangkok,Bangkok,Central,77,กรุงเทพมหานคร
