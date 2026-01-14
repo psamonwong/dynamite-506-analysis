@@ -38,10 +38,9 @@ parameters{
     real<lower=0> phi_c;           // dispersion for reported cases totals
     real<lower=0> phi_d;           // dispersion for reported deaths totals
 
-    // Baseline FOI: province intercept + yearly AR(1) residual
+    // Baseline FOI: province intercept + yearly random effect
     array[S] real alpha_lambda_s;          // province-specific baseline log-FOI
-    real<lower=-1, upper=1> rho_lambda;    // AR(1) persistence for yearly residuals
-    real<lower=0> eta_lambda;              // AR(1) innovation SD for yearly residuals
+    real<lower=0> sigma_epsilon_lambda;    // SD for yearly residuals
     array[Y, S] real epsilon_lambda_ys;    // yearly residuals per (y,s)
     // Seasonality (Fourier): region–period baseline + year–province deviations
     array[H, P, R] real a_cos;        // cosine coefficients by harmonic/period/region
@@ -53,8 +52,7 @@ parameters{
     // Sign-anchored random-walk parameterization for gamma_kappa_pr
     array[R] real gamma_kappa_pr_base;   // period-1 anchor (positive) per region
     array[P-1, R] real gamma_kappa_pr_innov;      // RW innovations for periods 2..P
-    array[Y, S] real delta_kappa_ys;             // province–year deviation (AR(1) in model)
-    array[Y, A, S] real u_kappa_yas;             // residual variation by (y,a,s)
+    array[Y, S] real delta_kappa_ys;             // province–year deviation
     ordered[A] raw_h_kappa_a;                    // monotone-increasing raw age-loading
 
     // Clinical fraction by age (probability an infection is clinical)
@@ -62,42 +60,30 @@ parameters{
 
     // Case detection sensitivity (Se) on logit scale
     array[Y, R] real alpha_Se_yr;               // region–year baseline (random walk)
-    array[T, S] real delta_Se_ts;               // province–month deviations (AR(1))
+    array[S] real delta_Se_s;                   // province deviations (i.i.d.)
     real<lower=0> sigma_alpha_Se;               // RW innovation SD for alpha_Se_yr
-    real<lower=-1, upper=1> rho_Se;             // AR(1) persistence for delta_Se_ts
-    real<lower=0> sigma_delta_Se;               // AR(1) innovation SD for delta_Se_ts
+    real<lower=0> sigma_delta_Se;               // SD for delta_Se_s
 
     // False positives (background reporting)
     array[Y, R] real alpha_FP_yr;               // region–year baseline (random walk)
-    array[T, A, S] real delta_FP_tas;           // deviations by (t,a,s) (AR(1) over t)
+    array[S] real delta_FP_s;                   // province deviations (i.i.d.)
     real<lower=0> sigma_alpha_FP;               // RW innovation SD for alpha_FP_yr 
-    real<lower=-1, upper=1> rho_FP;             // AR(1) persistence for delta_FP_tas
-    real<lower=0> sigma_delta_FP;               // AR(1) innovation SD for delta_FP_tas
+    real<lower=0> sigma_delta_FP;               // SD for delta_FP_s
 
     // Reported case-fatality ratio (CFR) on logit (Lee–Carter)
     array[A] real beta_CFR_a;                   // baseline age-specific fatality
     // Sign-anchored random-walk parameterization for gamma_CFR_pr
     array[R] real<lower=0> gamma_CFR_pr_base;     // period-1 anchor (positive) per region
     array[P-1, R] real gamma_CFR_pr_innov;        // RW innovations for periods 2..P
-    array[Y, S] real delta_CFR_ys;              // province–year deviation (AR(1) in model)
-    array[Y, A, S] real u_CFR_yas;              // residual variation by (y,a,s)
     ordered[A] raw_h_CFR_a;                     // monotone-increasing raw age-loading
     real<lower=0> sigma_gamma_CFR;              // RW innovation SD for gamma_CFR_pr
-    real<lower=-1, upper=1> rho_CFR;            // AR(1) persistence for delta_CFR_ys
-    real<lower=0> sigma_delta_CFR;              // AR(1) innovation SD for delta_CFR_ys
-    real<lower=0> sigma_u_CFR;                  // residual SD for u_CFR_yas
 
     // Hyperparameters for kappa evolution
     real<lower=0> sigma_gamma_kappa;          // RW innovation SD (gamma_kappa_pr)
-    real<lower=-1, upper=1> rho_kappa;        // AR(1) persistence (delta_kappa_ys)
-    real<lower=0> sigma_delta_kappa;          // AR(1) innovation SD (delta_kappa_ys)
-    real<lower=0> sigma_u_kappa;              // residual SD (u_kappa_yas)
+    real<lower=0> sigma_delta_kappa;          // SD for delta_kappa_ys
 
     // Hyperparameter for baseline FOI
     real<lower=0> sigma_lambda_s;              // SD for province baseline FOI
-
-    // Hyperparameters for yearly FOI residuals
-    real<lower=0> sigma_eta_lambda;         // SD for yearly FOI residuals
 }
 
 transformed parameters {
@@ -189,11 +175,10 @@ transformed parameters {
             vector[A] log_kappa_age; // log age modifier for age a, year y, province s
             for(a_ind in 1:A){
                 log_kappa_age[a_ind] =
-                    beta_kappa_a[a_ind] +// age effect 
+                    beta_kappa_a[a_ind] + // age effect 
                     (gamma_kappa_pr[period_id[y_ind], region_id[s_ind]] + // region–period interaction
                      delta_kappa_ys[y_ind, s_ind]) * // yearly deviation for year y, province s
-                     h_kappa_a[a_ind] + // age sensitivity for age a
-                     u_kappa_yas[y_ind, a_ind, s_ind]; // random effect for year y, age a, province s
+                     h_kappa_a[a_ind]; // age sensitivity for age a
             }
             // Normalize across ages to mean 1 (identifiability)
             real sum_exp_a = 0;
@@ -207,7 +192,7 @@ transformed parameters {
         for(t_ind in 1:T){
             Se_ts[t_ind, s_ind] = 
                 inv_logit(alpha_Se_yr[year_id[t_ind], region_id[s_ind]] + // baseline sensitivity by year and region
-                          delta_Se_ts[t_ind, s_ind]); // monthly deviation by time and province
+                          delta_Se_s[s_ind]); // province deviation
         }
     }
     // False positives FP_tas (age-specific scaling via log(N_tas[t,a,s]); use total pop if desired)
@@ -216,7 +201,7 @@ transformed parameters {
             for(a_ind in 1:A){
                 FP_tas[t_ind, a_ind, s_ind] = exp(log(N_tas[t_ind, a_ind, s_ind]+ 1e-9) +
                                                 alpha_FP_yr[year_id[t_ind], region_id[s_ind]] +
-                                                delta_FP_tas[t_ind, a_ind, s_ind]);
+                                                delta_FP_s[s_ind]);
                                                 }
         }
     }
@@ -243,10 +228,9 @@ transformed parameters {
         for(s_ind in 1:S){
             for(a_ind in 1:A){
                 CFR_yas[y_ind, a_ind, s_ind] = inv_logit(
-                    beta_CFR_a[a_ind] +                     // age effect
-                    gamma_CFR_pr[period_id[y_ind], region_id[s_ind]] * h_CFR_a[a_ind]  + // period-region interaction (oriented)
-                    delta_CFR_ys[y_ind, s_ind] +            // yearly deviation for year y, province s
-                    u_CFR_yas[y_ind, a_ind, s_ind]          // random effect for year y, age a, province s
+                    beta_CFR_a[a_ind] + // age effect
+                    gamma_CFR_pr[period_id[y_ind], region_id[s_ind]] * // period-region trend
+                    h_CFR_a[a_ind] // age sensitivity
                 );
             }
         }
@@ -308,7 +292,7 @@ transformed parameters {
 
 model {
     sigma_lambda_s ~ exponential(1); // prior for province baseline FOI SD
-    sigma_eta_lambda ~ exponential(1); // prior for yearly FOI residual SD
+    sigma_epsilon_lambda ~ exponential(1); // prior for yearly FOI residual SD
 
     // Priors for dispersion of monthly totals
     phi_c ~ normal(0, 5);          // cases NB2 dispersion
@@ -316,46 +300,30 @@ model {
 
     // Baseline FOI priors (keep transmission trend relatively stable)
     alpha_lambda_s ~ normal(0, sigma_lambda_s); // province intercepts
-    rho_lambda ~ normal(0, 0.2);     // AR(1) persistence
-    eta_lambda ~ normal(0, sigma_eta_lambda);     // AR(1) innovation SD
 
     // Case detection Se hyperpriors 
     sigma_alpha_Se ~ exponential(0.5);
-    sigma_delta_Se ~ exponential(0.5);
-    rho_Se ~ normal(0, 0.5);   
+    sigma_delta_Se ~ exponential(2);
 
     // False positives FP hyperpriors
     sigma_alpha_FP ~ exponential(0.5);
-    sigma_delta_FP ~ exponential(0.5);
-    rho_FP ~ normal(0, 0.5);
+    sigma_delta_FP ~ exponential(2);
 
     // CFR hyperpriors
     sigma_gamma_CFR ~ exponential(1);
-    sigma_delta_CFR ~ exponential(1);
-    sigma_u_CFR ~ exponential(1);
-    rho_CFR ~ normal(0, 0.5);
 
     // Kappa (Lee–Carter) priors
     beta_kappa_a ~ normal(0, 1);        // baseline age RR
     raw_h_kappa_a ~ normal(0, 1);       // raw loadings (center+normalize in TP)
     sigma_gamma_kappa ~ exponential(1); // RW innovation SD
-    sigma_delta_kappa ~ exponential(1); // AR(1) innovation SD
-    rho_kappa ~ normal(0, 0.3);         // AR(1) persistence
-    sigma_u_kappa ~ exponential(1);     // residual SD
+    sigma_delta_kappa ~ exponential(2); // SD for delta_kappa_ys
 
     // CFR priors
     beta_CFR_a ~ normal(0, 1);
     raw_h_CFR_a ~ normal(0, 1);
 
-    // Residual priors (vectorized over ages)
-    for (y_ind in 1:Y)
-        for (s_ind in 1:S)
-            u_kappa_yas[y_ind, , s_ind] ~ normal(0, sigma_u_kappa);
-
-    for (y_ind in 1:Y)
-        for (s_ind in 1:S)
-            u_CFR_yas[y_ind, , s_ind] ~ normal(0, sigma_u_CFR);
-
+    // Clinical fraction priors (weakly informative to avoid boundary at 1)
+    nu_a ~ beta(2, 2);
 
     // Prior for seasonal Fourier coefficients (region–period baseline)
     for(h in 1:H){
@@ -377,11 +345,10 @@ model {
         }
     }
 
-    // Yearly AR(1) for baseline FOI residual epsilon_lambda_ys 
+    // Yearly i.i.d. random effects for baseline FOI residual epsilon_lambda_ys 
     for(s_ind in 1:S){
-        epsilon_lambda_ys[1, s_ind] ~ normal(0, 0.2); // Prior for first year deviation 
-        for(y_ind in 2:Y){
-            epsilon_lambda_ys[y_ind, s_ind] ~ normal(rho_lambda * epsilon_lambda_ys[y_ind - 1, s_ind], eta_lambda);
+        for(y_ind in 1:Y){
+            epsilon_lambda_ys[y_ind, s_ind] ~ normal(0, sigma_epsilon_lambda);
         }
     }
 
@@ -393,13 +360,8 @@ model {
         }
     }
     
-    // Province–month AR(1) for delta_Se_ts (case detection sensitivity)
-    for (s_ind in 1:S) {
-        delta_Se_ts[1, s_ind] ~ normal(0, 0.5); // Prior for first month
-        for (t_ind in 2:T) {
-            delta_Se_ts[t_ind, s_ind] ~ normal(rho_Se * delta_Se_ts[t_ind - 1, s_ind], sigma_delta_Se); // AR(1) prior 
-        }
-    }
+    // Province i.i.d. random effects for delta_Se_s (case detection sensitivity)
+    delta_Se_s ~ normal(0, sigma_delta_Se);
 
     // Region–year random walk for alpha_FP_yr (false positives)
     for (r_ind in 1:R) {
@@ -409,15 +371,8 @@ model {
         }
     }
 
-        // Province–age–month AR(1) for delta_FP_tas (false positives)
-    for (s_ind in 1:S) {
-        for (a_ind in 1:A) {
-            delta_FP_tas[1, a_ind, s_ind] ~ normal(0, 1); // Prior for first month
-            for (t_ind in 2:T) {
-                delta_FP_tas[t_ind, a_ind, s_ind] ~ normal(rho_FP * delta_FP_tas[t_ind - 1, a_ind, s_ind], sigma_delta_FP);
-            }
-        }
-    }
+    // Province i.i.d. random effects for delta_FP_s (false positives)
+    delta_FP_s ~ normal(0, sigma_delta_FP);
 
     // Region–period anchored random walk for gamma_kappa_pr (kappa)
     for (r_ind in 1:R){
@@ -427,11 +382,10 @@ model {
         }
     }
 
-    // Province–year AR(1) for delta_kappa_ys (kappa)
+    // Province–year i.i.d. random effects for delta_kappa_ys (kappa)
     for (s_ind in 1:S){
-        delta_kappa_ys[1, s_ind] ~ normal(0, 0.5); // Prior for first year
-        for (y_ind in 2:Y){
-            delta_kappa_ys[y_ind, s_ind] ~ normal(rho_kappa * delta_kappa_ys[y_ind - 1, s_ind], sigma_delta_kappa); // AR(1) prior
+        for (y_ind in 1:Y){
+            delta_kappa_ys[y_ind, s_ind] ~ normal(0, sigma_delta_kappa);
         }
     }
 
@@ -440,14 +394,6 @@ model {
         gamma_CFR_pr_base[r_ind] ~ normal(0, 0.5); // Prior for first period (half-normal via <lower=0>)
         for (p_ind in 1:(P-1)){
             gamma_CFR_pr_innov[p_ind, r_ind] ~ normal(0, sigma_gamma_CFR); // RW innovations for periods 2..P
-        }
-    }
-
-    // Province–year AR(1) for delta_CFR_ys (CFR)
-    for (s_ind in 1:S){
-        delta_CFR_ys[1, s_ind] ~ normal(0, 0.5); // Prior for first year
-        for (y_ind in 2:Y){
-            delta_CFR_ys[y_ind, s_ind] ~ normal(rho_CFR * delta_CFR_ys[y_ind - 1, s_ind], sigma_delta_CFR); // AR(1) prior
         }
     }
 

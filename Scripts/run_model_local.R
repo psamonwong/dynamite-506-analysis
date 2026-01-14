@@ -20,7 +20,7 @@ population_data <- read_csv(here("Analysis_data", "Population", "population_data
 # Setup
 area <- c( "Chiang Rai", "Lampang",  "Nakhon Ratchasima", "Surin")#, "Songkhla", "Phatthalung")
 period_size <- 3
-n_periods <- 3
+n_periods <- 2
 start_year <- 2004
 year_selected <- seq(from = start_year, to = start_year + period_size * n_periods - 1)
 
@@ -182,11 +182,11 @@ stan_data <- list(
 )
 
 # Sampling settings
-iter <- getOption("stan.iter", 400)
-warmup <- getOption("stan.warmup", 100)
+iter <- getOption("stan.iter", 2000)
+warmup <- getOption("stan.warmup", 1000)
 chains <- getOption("stan.chains", 4)
-thin <- getOption("stan.thin", 1)
-seed <- getOption("stan.seed", 1234L)
+thin <- getOption("stan.thin", 4)
+seed <- getOption("stan.seed", 2)
 message(sprintf("Sampling: iter=%d warmup=%d chains=%d thin=%d", iter, warmup, chains, thin))
 
 fit <- rstan::sampling(object = mod, data = stan_data, iter = iter, warmup = warmup, cores = 4,
