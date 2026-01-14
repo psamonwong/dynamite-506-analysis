@@ -182,23 +182,43 @@ stan_data <- list(
 )
 
 # Sampling settings
-iter <- getOption("stan.iter", 1000)
-warmup <- getOption("stan.warmup", 500)
+iter <- getOption("stan.iter", 400)
+warmup <- getOption("stan.warmup", 100)
 chains <- getOption("stan.chains", 4)
-thin <- getOption("stan.thin", 4)
+thin <- getOption("stan.thin", 1)
 seed <- getOption("stan.seed", 1234L)
 message(sprintf("Sampling: iter=%d warmup=%d chains=%d thin=%d", iter, warmup, chains, thin))
 
 fit <- rstan::sampling(object = mod, data = stan_data, iter = iter, warmup = warmup, cores = 4,
-                       chains = chains, thin = thin, seed = seed, control = list(adapt_delta = 0.9))
+                       chains = chains, thin = thin, seed = seed, 
+                       control = list(adapt_delta = 0.90, max_treedepth = 12))
 
 save(fit,
      file = here("Rout", "fit_01.RData"))
 
 
-load('../Rout/fit_01.RData')
+load('Rout/fit_01.RData')
 
-rstan::traceplot(fit, pars = 'q_case_ys[1,1]')
+rstan::traceplot(fit, pars = 'h_kappa_a')
+rstan::traceplot(fit, pars = 'gamma_kappa_pr')
+
+rstan::traceplot(fit, pars = 'h_CFR_a')
+rstan::traceplot(fit, pars = 'gamma_CFR_pr')
+
+
+rstan::traceplot(fit, pars = 'sigma_alpha_Se')
+rstan::traceplot(fit, pars = 'sigma_delta_Se')
+rstan::traceplot(fit, pars = 'rho_Se')
+
+rstan::traceplot(fit, pars = 'sigma_alpha_FP')
+rstan::traceplot(fit, pars = 'sigma_delta_FP')
+rstan::traceplot(fit, pars = 'rho_FP')
+
+rstan::traceplot(fit, pars = 'sigma_gamma_CFR')
+rstan::traceplot(fit, pars = 'sigma_delta_CFR')
+rstan::traceplot(fit, pars = 'sigma_u_CFR')
+rstan::traceplot(fit, pars = 'rho_CFR')
+
 
 
 names(fit)

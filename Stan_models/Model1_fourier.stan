@@ -51,11 +51,11 @@ parameters{
     // Age transmission modifier (Lee–Carter)
     array[A] real beta_kappa_a;                  // baseline age-specific RR
     // Sign-anchored random-walk parameterization for gamma_kappa_pr
-    array[R] real<lower=0> gamma_kappa_pr_base;   // period-1 anchor (positive) per region
+    array[R] real gamma_kappa_pr_base;   // period-1 anchor (positive) per region
     array[P-1, R] real gamma_kappa_pr_innov;      // RW innovations for periods 2..P
     array[Y, S] real delta_kappa_ys;             // province–year deviation (AR(1) in model)
     array[Y, A, S] real u_kappa_yas;             // residual variation by (y,a,s)
-    array[A] real raw_h_kappa_a;                 // raw age-loading; centered+normalized in TP
+    ordered[A] raw_h_kappa_a;                    // monotone-increasing raw age-loading
 
     // Clinical fraction by age (probability an infection is clinical)
     array[A] real<lower=0, upper=1> nu_a;       // age-specific clinical fraction
@@ -81,7 +81,7 @@ parameters{
     array[P-1, R] real gamma_CFR_pr_innov;        // RW innovations for periods 2..P
     array[Y, S] real delta_CFR_ys;              // province–year deviation (AR(1) in model)
     array[Y, A, S] real u_CFR_yas;              // residual variation by (y,a,s)
-    array[A] real raw_h_CFR_a;                  // raw age-loading; centered+normalized in TP
+    ordered[A] raw_h_CFR_a;                     // monotone-increasing raw age-loading
     real<lower=0> sigma_gamma_CFR;              // RW innovation SD for gamma_CFR_pr
     real<lower=-1, upper=1> rho_CFR;            // AR(1) persistence for delta_CFR_ys
     real<lower=0> sigma_delta_CFR;              // AR(1) innovation SD for delta_CFR_ys
@@ -166,14 +166,12 @@ transformed parameters {
         }
     }
 
-    // Age sensitivity h_kappa_a (centered and L2-normalized: sum(h)≈0, sum(h^2)≈1)
+    // Age sensitivity h_kappa_a (ordered -> center -> L2-normalize)
     {
-    vector[A] h_kappa_a_raw = to_vector(raw_h_kappa_a);
+    vector[A] h_kappa_a_raw = raw_h_kappa_a; // `ordered[A]` ensures monotone increase
     vector[A] h_kappa_a_centered = h_kappa_a_raw - rep_vector(mean(h_kappa_a_raw), A);
     real h_kappa_a_norm2 = dot_product(h_kappa_a_centered, h_kappa_a_centered);  // sum(centered^2)
-    vector[A] h_kappa_a_normalized = h_kappa_a_centered / sqrt(h_kappa_a_norm2 + 1e-12);
-    // No discrete sign flip; keep orientation fixed by construction
-    h_kappa_a = h_kappa_a_normalized;
+    h_kappa_a = h_kappa_a_centered / sqrt(h_kappa_a_norm2 + 1e-12); // preserves monotonicity
     }
 
     // Build gamma_kappa_pr via anchored random walk (period 1 positive)
@@ -225,12 +223,10 @@ transformed parameters {
 
     
     {
-    vector[A] h_CFR_a_raw = to_vector(raw_h_CFR_a); // raw age sensitivity for age a 
-    vector[A] h_CFR_a_centered = h_CFR_a_raw - rep_vector(mean(h_CFR_a_raw), A); // center
-    real h_CFR_a_norm2 = dot_product(h_CFR_a_centered, h_CFR_a_centered);  // sum(centered^2)
-    vector[A] h_CFR_a_normalized = h_CFR_a_centered / sqrt(h_CFR_a_norm2 + 1e-12);
-    // No discrete sign flip; keep orientation fixed by construction
-    h_CFR_a = h_CFR_a_normalized;
+    vector[A] h_CFR_a_raw = raw_h_CFR_a; // ordered ascending
+    vector[A] h_CFR_a_centered = h_CFR_a_raw - rep_vector(mean(h_CFR_a_raw), A);
+    real h_CFR_a_norm2 = dot_product(h_CFR_a_centered, h_CFR_a_centered);
+    h_CFR_a = h_CFR_a_centered / sqrt(h_CFR_a_norm2 + 1e-12);
     }
 
     // Build gamma_CFR_pr via anchored random walk (period 1 positive)
@@ -255,9 +251,6 @@ transformed parameters {
             }
         }
     }
-
-
-     // Calculating I_tas, lambda_tas, C_tas and D_tas
     for(s_ind in 1:S){
         for(t_ind in 1:T){
             real mu_case_sum = 0;
