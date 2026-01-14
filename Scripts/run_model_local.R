@@ -182,8 +182,8 @@ stan_data <- list(
 )
 
 # Sampling settings
-iter <- getOption("stan.iter", 600)
-warmup <- getOption("stan.warmup", 300)
+iter <- getOption("stan.iter", 1000)
+warmup <- getOption("stan.warmup", 500)
 chains <- getOption("stan.chains", 4)
 thin <- getOption("stan.thin", 4)
 seed <- getOption("stan.seed", 1234L)

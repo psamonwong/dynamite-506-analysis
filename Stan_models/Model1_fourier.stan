@@ -30,7 +30,7 @@ data {
 }
 
 transformed data {
-    int a_anchor = 1; // anchor age for Lee–Carter orientation
+    
 }
 
 parameters{
@@ -50,7 +50,9 @@ parameters{
     array[H, Y, S] real delta_sin;    // year–province sine deviations
     // Age transmission modifier (Lee–Carter)
     array[A] real beta_kappa_a;                  // baseline age-specific RR
-    array[P, R] real raw_gamma_kappa_pr;         // raw region–period scaler (oriented in TP)
+    // Sign-anchored random-walk parameterization for gamma_kappa_pr
+    array[R] real<lower=0> gamma_kappa_pr_base;   // period-1 anchor (positive) per region
+    array[P-1, R] real gamma_kappa_pr_innov;      // RW innovations for periods 2..P
     array[Y, S] real delta_kappa_ys;             // province–year deviation (AR(1) in model)
     array[Y, A, S] real u_kappa_yas;             // residual variation by (y,a,s)
     array[A] real raw_h_kappa_a;                 // raw age-loading; centered+normalized in TP
@@ -74,7 +76,9 @@ parameters{
 
     // Reported case-fatality ratio (CFR) on logit (Lee–Carter)
     array[A] real beta_CFR_a;                   // baseline age-specific fatality
-    array[P, R] real raw_gamma_CFR_pr;          // raw region–period scaler (oriented in TP)
+    // Sign-anchored random-walk parameterization for gamma_CFR_pr
+    array[R] real<lower=0> gamma_CFR_pr_base;     // period-1 anchor (positive) per region
+    array[P-1, R] real gamma_CFR_pr_innov;        // RW innovations for periods 2..P
     array[Y, S] real delta_CFR_ys;              // province–year deviation (AR(1) in model)
     array[Y, A, S] real u_CFR_yas;              // residual variation by (y,a,s)
     array[A] real raw_h_CFR_a;                  // raw age-loading; centered+normalized in TP
@@ -168,12 +172,16 @@ transformed parameters {
     vector[A] h_kappa_a_centered = h_kappa_a_raw - rep_vector(mean(h_kappa_a_raw), A);
     real h_kappa_a_norm2 = dot_product(h_kappa_a_centered, h_kappa_a_centered);  // sum(centered^2)
     vector[A] h_kappa_a_normalized = h_kappa_a_centered / sqrt(h_kappa_a_norm2 + 1e-12);
-    // Orientation: flip signs deterministically based on raw_gamma_kappa_pr anchor
-    real sgn_kappa = (h_kappa_a_normalized[a_anchor] >= 0) ? 1.0 : -1.0;
-    h_kappa_a = sgn_kappa * h_kappa_a_normalized;
-    for (p_ind in 1:P)
-        for (r_ind in 1:R)
-            gamma_kappa_pr[p_ind, r_ind] = sgn_kappa * raw_gamma_kappa_pr[p_ind, r_ind];
+    // No discrete sign flip; keep orientation fixed by construction
+    h_kappa_a = h_kappa_a_normalized;
+    }
+
+    // Build gamma_kappa_pr via anchored random walk (period 1 positive)
+    for (r_ind in 1:R) {
+        gamma_kappa_pr[1, r_ind] = gamma_kappa_pr_base[r_ind];
+        for (p_ind in 2:P) {
+            gamma_kappa_pr[p_ind, r_ind] = gamma_kappa_pr[p_ind - 1, r_ind] + gamma_kappa_pr_innov[p_ind - 1, r_ind];
+        }
     }
 
 
@@ -221,12 +229,16 @@ transformed parameters {
     vector[A] h_CFR_a_centered = h_CFR_a_raw - rep_vector(mean(h_CFR_a_raw), A); // center
     real h_CFR_a_norm2 = dot_product(h_CFR_a_centered, h_CFR_a_centered);  // sum(centered^2)
     vector[A] h_CFR_a_normalized = h_CFR_a_centered / sqrt(h_CFR_a_norm2 + 1e-12);
-    // Orientation: flip signs deterministically based on raw_gamma_CFR_pr anchor
-    real sgn_CFR = (h_CFR_a_normalized[a_anchor] >= 0) ? 1.0 : -1.0;
-    h_CFR_a = sgn_CFR * h_CFR_a_normalized;
-    for (p_ind in 1:P)
-        for (r_ind in 1:R)
-            gamma_CFR_pr[p_ind, r_ind] = sgn_CFR * raw_gamma_CFR_pr[p_ind, r_ind];
+    // No discrete sign flip; keep orientation fixed by construction
+    h_CFR_a = h_CFR_a_normalized;
+    }
+
+    // Build gamma_CFR_pr via anchored random walk (period 1 positive)
+    for (r_ind in 1:R) {
+        gamma_CFR_pr[1, r_ind] = gamma_CFR_pr_base[r_ind];
+        for (p_ind in 2:P) {
+            gamma_CFR_pr[p_ind, r_ind] = gamma_CFR_pr[p_ind - 1, r_ind] + gamma_CFR_pr_innov[p_ind - 1, r_ind];
+        }
     }
 
 
@@ -414,11 +426,11 @@ model {
         }
     }
 
-    // Region–period random walk for raw_gamma_kappa_pr (kappa; oriented in TP)
+    // Region–period anchored random walk for gamma_kappa_pr (kappa)
     for (r_ind in 1:R){
-        raw_gamma_kappa_pr[1, r_ind] ~ normal(0, 0.5); // Prior for first period
-        for (p_ind in 2:P){
-            raw_gamma_kappa_pr[p_ind, r_ind] ~ normal(raw_gamma_kappa_pr[p_ind - 1, r_ind], sigma_gamma_kappa); // Random walk prior
+        gamma_kappa_pr_base[r_ind] ~ normal(0, 0.5); // Prior for first period (half-normal via <lower=0>)
+        for (p_ind in 1:(P-1)){
+            gamma_kappa_pr_innov[p_ind, r_ind] ~ normal(0, sigma_gamma_kappa); // RW innovations for periods 2..P
         }
     }
 
@@ -430,11 +442,11 @@ model {
         }
     }
 
-    // Region–period random walk for raw_gamma_CFR_pr (CFR; oriented in TP)
+    // Region–period anchored random walk for gamma_CFR_pr (CFR)
     for (r_ind in 1:R){
-        raw_gamma_CFR_pr[1, r_ind] ~ normal(0, 0.5); // Prior for first period
-        for (p_ind in 2:P){
-            raw_gamma_CFR_pr[p_ind, r_ind] ~ normal(raw_gamma_CFR_pr[p_ind - 1, r_ind], sigma_gamma_CFR); // Random walk prior
+        gamma_CFR_pr_base[r_ind] ~ normal(0, 0.5); // Prior for first period (half-normal via <lower=0>)
+        for (p_ind in 1:(P-1)){
+            gamma_CFR_pr_innov[p_ind, r_ind] ~ normal(0, sigma_gamma_CFR); // RW innovations for periods 2..P
         }
     }
 
