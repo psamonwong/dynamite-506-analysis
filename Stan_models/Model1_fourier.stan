@@ -73,7 +73,7 @@ parameters{
     // Reported case-fatality ratio (CFR) on logit (Lee–Carter)
     array[A] real beta_CFR_a;                   // baseline age-specific fatality
     // Sign-anchored random-walk parameterization for gamma_CFR_pr
-    array[R] real<lower=0> gamma_CFR_pr_base;     // period-1 anchor (positive) per region
+    array[R] real gamma_CFR_pr_base;     // period-1 anchor (positive) per region
     array[P-1, R] real gamma_CFR_pr_innov;        // RW innovations for periods 2..P
     ordered[A] raw_h_CFR_a;                     // monotone-increasing raw age-loading
     real<lower=0> sigma_gamma_CFR;              // RW innovation SD for gamma_CFR_pr
@@ -322,8 +322,8 @@ model {
     beta_CFR_a ~ normal(0, 1);
     raw_h_CFR_a ~ normal(0, 1);
 
-    // Clinical fraction priors (weakly informative to avoid boundary at 1)
-    nu_a ~ beta(2, 2);
+    // Clinical fraction priors (weakly informative to favor low proportion ~10%)
+    nu_a ~ beta(1, 9);  // mean = 1/(1+9) = 0.1 (10%)
 
     // Prior for seasonal Fourier coefficients (region–period baseline)
     for(h in 1:H){

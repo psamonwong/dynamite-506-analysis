@@ -20,7 +20,7 @@ population_data <- read_csv(here("Analysis_data", "Population", "population_data
 # Setup
 area <- c( "Chiang Rai", "Lampang",  "Nakhon Ratchasima", "Surin")#, "Songkhla", "Phatthalung")
 period_size <- 3
-n_periods <- 2
+n_periods <- 3
 start_year <- 2004
 year_selected <- seq(from = start_year, to = start_year + period_size * n_periods - 1)
 
@@ -182,11 +182,11 @@ stan_data <- list(
 )
 
 # Sampling settings
-iter <- getOption("stan.iter", 2000)
-warmup <- getOption("stan.warmup", 1000)
+iter <- getOption("stan.iter", 400)
+warmup <- getOption("stan.warmup", 100)
 chains <- getOption("stan.chains", 4)
-thin <- getOption("stan.thin", 4)
-seed <- getOption("stan.seed", 2)
+thin <- getOption("stan.thin", 1)
+seed <- getOption("stan.seed", 1234L)
 message(sprintf("Sampling: iter=%d warmup=%d chains=%d thin=%d", iter, warmup, chains, thin))
 
 fit <- rstan::sampling(object = mod, data = stan_data, iter = iter, warmup = warmup, cores = 4,
@@ -199,13 +199,20 @@ save(fit,
 
 load('Rout/fit_01.RData')
 
+
+rstan::traceplot(fit, pars = 'beta_kappa_a')
 rstan::traceplot(fit, pars = 'h_kappa_a')
 rstan::traceplot(fit, pars = 'gamma_kappa_pr')
+rstan::traceplot(fit, pars = 'sigma_delta_kappa')
+rstan::traceplot(fit, pars = 'sigma_u_kappa')
+rstan::traceplot(fit, pars = 'rho_kappa')
 
+rstan::traceplot(fit, pars = 'beta_CFR_a')
 rstan::traceplot(fit, pars = 'h_CFR_a')
 rstan::traceplot(fit, pars = 'gamma_CFR_pr')
 
 
+rstan::traceplot(fit, pars = 'alpha_Se_yr')
 rstan::traceplot(fit, pars = 'sigma_alpha_Se')
 rstan::traceplot(fit, pars = 'sigma_delta_Se')
 rstan::traceplot(fit, pars = 'rho_Se')
@@ -215,9 +222,15 @@ rstan::traceplot(fit, pars = 'sigma_delta_FP')
 rstan::traceplot(fit, pars = 'rho_FP')
 
 rstan::traceplot(fit, pars = 'sigma_gamma_CFR')
-rstan::traceplot(fit, pars = 'sigma_delta_CFR')
-rstan::traceplot(fit, pars = 'sigma_u_CFR')
-rstan::traceplot(fit, pars = 'rho_CFR')
+rstan::traceplot(fit, pars = 'sigma_delta_CFR_y')
+rstan::traceplot(fit, pars = 'sigma_delta_CFR_s')
+rstan::traceplot(fit, pars = 'delta_CFR_s')
+rstan::traceplot(fit, pars = 'FP_tas[2,1,1]')
+
+rstan::traceplot(fit, pars = 'delta_Se_s')
+rstan::traceplot(fit, pars = 'nu_a')
+
+
 
 
 
