@@ -41,7 +41,7 @@ parameters{
     // Baseline FOI: province intercept + yearly random effect
     array[S] real alpha_lambda_s;          // province-specific baseline log-FOI
     real<lower=0> sigma_epsilon_lambda;    // SD for yearly residuals
-    array[Y, S] real epsilon_lambda_ys;    // yearly residuals per (y,s)
+    array[Y, S] real epsilon_lambda_ys;    // yearly residuals per (y,s) — i.i.d.
     // Seasonality (Fourier): region–period baseline + year–province deviations
     array[H, P, R] real a_cos;        // cosine coefficients by harmonic/period/region
     array[H, P, R] real a_sin;        // sine coefficients by harmonic/period/region
@@ -55,17 +55,19 @@ parameters{
     array[Y, S] real delta_kappa_ys;             // province–year deviation
     ordered[A] raw_h_kappa_a;                    // monotone-increasing raw age-loading
 
-    // Clinical fraction by age (probability an infection is clinical)
-    array[A] real<lower=0, upper=1> nu_a;       // age-specific clinical fraction
+    // Clinical fraction (probability an infection is clinical)
+    real<lower=0, upper=1> nu;       // shared clinical fraction across ages
 
-    // Case detection sensitivity (Se) on logit scale
-    array[Y, R] real alpha_Se_yr;               // region–year baseline (random walk)
+    // Case detection sensitivity (Se) on logit scale (non-centered RW)
+    array[R] real alpha_Se_yr_base;             // year-1 anchor per region
+    array[Y-1, R] real alpha_Se_yr_innov;       // RW innovations for years 2..Y
     array[S] real delta_Se_s;                   // province deviations (i.i.d.)
     real<lower=0> sigma_alpha_Se;               // RW innovation SD for alpha_Se_yr
     real<lower=0> sigma_delta_Se;               // SD for delta_Se_s
 
-    // False positives (background reporting)
-    array[Y, R] real alpha_FP_yr;               // region–year baseline (random walk)
+    // False positives (background reporting) (non-centered RW)
+    array[R] real alpha_FP_yr_base;             // year-1 anchor per region
+    array[Y-1, R] real alpha_FP_yr_innov;       // RW innovations for years 2..Y
     array[S] real delta_FP_s;                   // province deviations (i.i.d.)
     real<lower=0> sigma_alpha_FP;               // RW innovation SD for alpha_FP_yr 
     real<lower=0> sigma_delta_FP;               // SD for delta_FP_s
@@ -87,42 +89,37 @@ parameters{
 }
 
 transformed parameters {
-    // Latent monthly totals (means for NB2 likelihoods)
+    // Latent monthly totals (means for NB2 likelihoods) — KEPT for likelihood
     array[T, S] real<lower=0> mu_case_ts;        // mu_case_t,s mean reported cases at time t, province s
     array[T, S] real<lower=0> mu_death_ts;       // mu_death_t,s mean reported deaths at time t, province s
     
-    // Infection rate and related quantities
-    array[T, A, S] real<lower=0> lambda_tas;    // lambda_t,a,s infection rate at time t, age a, province s
-    array[Y, M, S] real<lower=0> kappa_month_yms;   // kappa_month_y,m,s seasonal modifier for month m, year y, province s
-    array[Y, A, S] real<lower=0> kappa_age_yas;     // kappa_age_y,a,s age modifier for age a, year y, province s
+    // Smaller arrays that are reused — KEPT
+    array[Y, M, S] real<lower=0> kappa_month_yms;   // kappa_month_y,m,s seasonal modifier
+    array[Y, A, S] real<lower=0> kappa_age_yas;     // kappa_age_y,a,s age modifier
+    array[Y, S] real log_lambda_base;               // log baseline infection rate for year y, province s
 
-    // Transmission rate parameters
-    array[Y, S] real log_lambda_base;        // log baseline infection rate for year y, province s
+    // Age sensitivity for Lee–Carter structures — KEPT (small)
+    vector[A] h_kappa_a;                       // h_kappa[a]: age sensitivity for age a
+    array[P, R] real gamma_kappa_pr;           // oriented gamma for product
 
-    // Age sensitivity for lee–carter structures
-    vector[A] h_kappa_a;                       // h_kappa[a]: age sensitivity for age a (oriented, final parameter)
-    array[P, R] real gamma_kappa_pr;           // oriented gamma for product (final parameter)
-
-    // Expected new clinical infections and reported quantities
-    array[T, A, S] real<lower=0> I_tas;      // I_t,a,s expected new clinical infections at time t, age a, province s
-    // Expected reported cases and deaths
-    array[T, A, S] real<lower=0> C_tas;      // C_t,a,s expected reported cases at time t, age a, province s
-    array[T, A, S] real<lower=0> D_tas;      // D_t,a,s expected reported deaths at time t, age a, province s
-
-    // Case detection sensitivity and false positives
-    array[T, S] real<lower=0, upper=1> Se_ts;        // Se_t,s case detection sensitivity at time t, province s
-    array[T, A, S] real<lower=0> FP_tas;            // FP_t,a,s false positives at time t, age a, province s 
+    // Case detection sensitivity and false positives — KEPT (smaller arrays)
+    array[Y, R] real alpha_Se_yr;                    // region–year baseline (built from non-centered RW)
+    array[Y, R] real alpha_FP_yr;                    // region–year baseline (built from non-centered RW)
     
-    // Case fatality rate
-    array[Y, A, S] real<lower=0, upper=1> CFR_yas;    // CFR_y,a,s case fatality rate at year y, age a, province s
+    // Case fatality rate — KEPT
+    array[Y, A, S] real<lower=0, upper=1> CFR_yas;    // CFR_y,a,s case fatality rate
 
-    // Age sensitivity for lee–carter structures
-    vector[A] h_CFR_a;                       // h_CFR[a]: age sensitivity for age a (oriented, final parameter)
-    array[P, R] real gamma_CFR_pr;             // oriented gamma for product (final parameter)
+    // Age sensitivity for Lee–Carter CFR — KEPT (small)
+    vector[A] h_CFR_a;                       // h_CFR[a]: age sensitivity for age a
+    array[P, R] real gamma_CFR_pr;             // oriented gamma for product
 
-    // Proportion of cases and deaths by age (yearly age composition)
-    array[Y, S] vector[A] q_case_ys;  // q_case_y,s: proportion of cases by age a, year y, province s
-    array[Y, S] vector[A] q_death_ys;  // q_death_y,s: proportion of deaths by age a, year y, province s
+    // Proportion of cases and deaths by age — KEPT for multinomial likelihood
+    array[Y, S] vector[A] q_case_ys;  // q_case_y,s: proportion of cases by age
+    array[Y, S] vector[A] q_death_ys;  // q_death_y,s: proportion of deaths by age
+    
+    // Yearly aggregates for age composition (computed inline)
+    array[Y, A, S] real C_yas;  // yearly cases by age (aggregated from monthly)
+    array[Y, A, S] real D_yas;  // yearly deaths by age (aggregated from monthly)
 
     // Baseline FOI: province intercept + yearly residual
     for(s_ind in 1:S){
@@ -149,6 +146,22 @@ transformed parameters {
             real sum_exp_m = 0; 
             for(m_ind in 1:M) sum_exp_m += exp(log_kappa_yms[m_ind]); // sum over months 
             for(m_ind in 1:M) kappa_month_yms[y_ind, m_ind, s_ind] = M * exp(log_kappa_yms[m_ind])/ sum_exp_m; // normalize to mean 1
+        }
+    }
+
+    // Build alpha_Se_yr via non-centered random walk (year 1 anchor)
+    for (r_ind in 1:R) {
+        alpha_Se_yr[1, r_ind] = alpha_Se_yr_base[r_ind];
+        for (y_ind in 2:Y) {
+            alpha_Se_yr[y_ind, r_ind] = alpha_Se_yr[y_ind - 1, r_ind] + alpha_Se_yr_innov[y_ind - 1, r_ind];
+        }
+    }
+
+    // Build alpha_FP_yr via non-centered random walk (year 1 anchor)
+    for (r_ind in 1:R) {
+        alpha_FP_yr[1, r_ind] = alpha_FP_yr_base[r_ind];
+        for (y_ind in 2:Y) {
+            alpha_FP_yr[y_ind, r_ind] = alpha_FP_yr[y_ind - 1, r_ind] + alpha_FP_yr_innov[y_ind - 1, r_ind];
         }
     }
 
@@ -187,26 +200,6 @@ transformed parameters {
         }
     }
 
-    // Case detection sensitivity Se_ts (logit)
-    for(s_ind in 1:S){
-        for(t_ind in 1:T){
-            Se_ts[t_ind, s_ind] = 
-                inv_logit(alpha_Se_yr[year_id[t_ind], region_id[s_ind]] + // baseline sensitivity by year and region
-                          delta_Se_s[s_ind]); // province deviation
-        }
-    }
-    // False positives FP_tas (age-specific scaling via log(N_tas[t,a,s]); use total pop if desired)
-    for(s_ind in 1:S){
-        for(t_ind in 1:T){
-            for(a_ind in 1:A){
-                FP_tas[t_ind, a_ind, s_ind] = exp(log(N_tas[t_ind, a_ind, s_ind]+ 1e-9) +
-                                                alpha_FP_yr[year_id[t_ind], region_id[s_ind]] +
-                                                delta_FP_s[s_ind]);
-                                                }
-        }
-    }
-
-    
     {
     vector[A] h_CFR_a_raw = raw_h_CFR_a; // ordered ascending
     vector[A] h_CFR_a_centered = h_CFR_a_raw - rep_vector(mean(h_CFR_a_raw), A);
@@ -235,28 +228,59 @@ transformed parameters {
             }
         }
     }
+    
+    // Initialize yearly aggregates for age composition
+    for(y_ind in 1:Y){
+        for(s_ind in 1:S){
+            for(a_ind in 1:A){
+                C_yas[y_ind, a_ind, s_ind] = 0.0;
+                D_yas[y_ind, a_ind, s_ind] = 0.0;
+            }
+        }
+    }
+    
+    // Compute monthly totals and accumulate yearly aggregates
+    // (lambda_tas, I_tas, C_tas, D_tas, Se_ts, FP_tas computed inline as locals)
     for(s_ind in 1:S){
         for(t_ind in 1:T){
+            int y_ind = year_id[t_ind];
+            int m_ind = month_id[t_ind];
+            int r_ind = region_id[s_ind];
+            
+            // Case detection sensitivity (local, was Se_ts)
+            real Se_local = inv_logit(alpha_Se_yr[y_ind, r_ind] + delta_Se_s[s_ind]);
+            
             real mu_case_sum = 0;
             real mu_death_sum = 0;
             for(a_ind in 1:A){
-                // Force of infection at time t, age a, province s 
-                lambda_tas[t_ind, a_ind, s_ind] = exp(log_lambda_base[year_id[t_ind], s_ind]) * // baseline infection rate
-                                                    kappa_month_yms[year_id[t_ind], month_id[t_ind], s_ind] * // seasonal modifier
-                                                    kappa_age_yas[year_id[t_ind], a_ind, s_ind]; // age modifier
-                // Expected number of new clinical infections at time t, age a, province s
-                I_tas[t_ind, a_ind, s_ind] = nu_a[a_ind] * // clinical fraction by age a 
-                        S_tas[t_ind, a_ind, s_ind] *  // proportion susceptible at time t, age a, province s
-                        N_tas[t_ind, a_ind, s_ind] *  // population size at time t, age a, province s
-                        (1 - exp(-lambda_tas[t_ind, a_ind, s_ind])); // infection probability at time t, age a, province s
-                // Expected reported cases and deaths at time t, age a, province s
-                C_tas[t_ind, a_ind, s_ind] = (I_tas[t_ind, a_ind, s_ind] * Se_ts[t_ind, s_ind]) + // Case detection sensitivity
-                                                 FP_tas[t_ind, a_ind, s_ind]; // False positives
-                D_tas[t_ind, a_ind, s_ind] = C_tas[t_ind, a_ind, s_ind] * // Calculated from reported cases (not infections)
-                                                CFR_yas[year_id[t_ind], a_ind, s_ind]; // case fatality rate by year, age, province 
-                // Aggregate to monthly totals for likelihood (over age)
-                mu_case_sum += C_tas[t_ind, a_ind, s_ind];
-                mu_death_sum += D_tas[t_ind, a_ind, s_ind];
+                // False positives (local, was FP_tas)
+                real FP_local = exp(log(N_tas[t_ind, a_ind, s_ind] + 1e-9) +
+                                    alpha_FP_yr[y_ind, r_ind] + delta_FP_s[s_ind]);
+                
+                // Force of infection (local, was lambda_tas)
+                real lambda_local = exp(log_lambda_base[y_ind, s_ind]) *
+                                    kappa_month_yms[y_ind, m_ind, s_ind] *
+                                    kappa_age_yas[y_ind, a_ind, s_ind];
+                
+                // Expected new clinical infections (local, was I_tas)
+                real I_local = nu *
+                               S_tas[t_ind, a_ind, s_ind] *
+                               N_tas[t_ind, a_ind, s_ind] *
+                               (1 - exp(-lambda_local));
+                
+                // Expected reported cases (local, was C_tas)
+                real C_local = I_local * Se_local + FP_local;
+                
+                // Expected reported deaths (local, was D_tas)
+                real D_local = C_local * CFR_yas[y_ind, a_ind, s_ind];
+                
+                // Aggregate to monthly totals
+                mu_case_sum += C_local;
+                mu_death_sum += D_local;
+                
+                // Accumulate to yearly totals for age composition
+                C_yas[y_ind, a_ind, s_ind] += C_local;
+                D_yas[y_ind, a_ind, s_ind] += D_local;
             }
             mu_case_ts[t_ind, s_ind] = mu_case_sum;
             mu_death_ts[t_ind, s_ind] = mu_death_sum;
@@ -266,16 +290,11 @@ transformed parameters {
     // Proportion of cases and deaths by age q_case_ys, q_death_ys 
     for(s_ind in 1:S){
         for(y_ind in 1:Y){
-            vector[A] C_age = rep_vector(0.0, A);
-            vector[A] D_age = rep_vector(0.0, A);
-            for(t_ind in 1:T){
-                if(year_id[t_ind] == y_ind){
-                    for(a_ind in 1:A){
-                        C_age[a_ind] += C_tas[t_ind, a_ind, s_ind]; 
-                        D_age[a_ind] += D_tas[t_ind, a_ind, s_ind];
-                    }
-                
-                }
+            vector[A] C_age;
+            vector[A] D_age;
+            for(a_ind in 1:A){
+                C_age[a_ind] = C_yas[y_ind, a_ind, s_ind];
+                D_age[a_ind] = D_yas[y_ind, a_ind, s_ind];
             }
             if(sum(C_age) > 0)
                     q_case_ys[y_ind, s_ind] = C_age / sum(C_age);
@@ -303,7 +322,7 @@ model {
 
     // Case detection Se hyperpriors 
     sigma_alpha_Se ~ exponential(0.5);
-    sigma_delta_Se ~ exponential(2);
+    sigma_delta_Se ~ exponential(4);
 
     // False positives FP hyperpriors
     sigma_alpha_FP ~ exponential(0.5);
@@ -322,8 +341,8 @@ model {
     beta_CFR_a ~ normal(0, 1);
     raw_h_CFR_a ~ normal(0, 1);
 
-    // Clinical fraction priors (weakly informative to favor low proportion ~10%)
-    nu_a ~ beta(1, 9);  // mean = 1/(1+9) = 0.1 (10%)
+    // Clinical fraction prior (weakly informative to favor low proportion ~10%)
+    nu ~ beta(1, 9);  // mean = 1/(1+9) = 0.1 (10%)
 
     // Prior for seasonal Fourier coefficients (region–period baseline)
     for(h in 1:H){
@@ -345,29 +364,29 @@ model {
         }
     }
 
-    // Yearly i.i.d. random effects for baseline FOI residual epsilon_lambda_ys 
+    // i.i.d. prior for epsilon_lambda_ys (baseline FOI residuals)
     for(s_ind in 1:S){
         for(y_ind in 1:Y){
             epsilon_lambda_ys[y_ind, s_ind] ~ normal(0, sigma_epsilon_lambda);
         }
     }
 
-    // Region–year random walk for alpha_Se_yr (case detection sensitivity)
+    // Region–year non-centered random walk for alpha_Se_yr (case detection sensitivity)
     for (r_ind in 1:R) {
-        alpha_Se_yr[1, r_ind] ~ normal(0, 0.5); // Prior for first year
-        for (y_ind in 2:Y) {
-            alpha_Se_yr[y_ind, r_ind] ~ normal(alpha_Se_yr[y_ind - 1, r_ind], sigma_alpha_Se); // Random walk prior
+        alpha_Se_yr_base[r_ind] ~ normal(0, 0.5); // Prior for year 1 anchor
+        for (y_ind in 1:(Y-1)) {
+            alpha_Se_yr_innov[y_ind, r_ind] ~ normal(0, sigma_alpha_Se); // RW innovations for years 2..Y
         }
     }
     
     // Province i.i.d. random effects for delta_Se_s (case detection sensitivity)
     delta_Se_s ~ normal(0, sigma_delta_Se);
 
-    // Region–year random walk for alpha_FP_yr (false positives)
+    // Region–year non-centered random walk for alpha_FP_yr (false positives)
     for (r_ind in 1:R) {
-        alpha_FP_yr[1, r_ind] ~ normal(0, 1); // Prior for first year
-        for (y_ind in 2:Y) {
-            alpha_FP_yr[y_ind, r_ind] ~ normal(alpha_FP_yr[y_ind - 1, r_ind], sigma_alpha_FP);
+        alpha_FP_yr_base[r_ind] ~ normal(0, 1); // Prior for year 1 anchor
+        for (y_ind in 1:(Y-1)) {
+            alpha_FP_yr_innov[y_ind, r_ind] ~ normal(0, sigma_alpha_FP); // RW innovations for years 2..Y
         }
     }
 

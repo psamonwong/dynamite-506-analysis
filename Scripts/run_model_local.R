@@ -18,7 +18,7 @@ case_age_data <- read_csv(here("Analysis_data", "Scrub_typhus", "case_death_by_a
 population_data <- read_csv(here("Analysis_data", "Population", "population_data_summarised.csv"))
 
 # Setup
-area <- c( "Chiang Rai", "Lampang",  "Nakhon Ratchasima", "Surin")#, "Songkhla", "Phatthalung")
+area <- c( "Chiang Rai", "Lampang",  "Nakhon Ratchasima", "Surin", "Songkhla", "Phatthalung", "Uttaradit", "Tak")
 period_size <- 3
 n_periods <- 3
 start_year <- 2004
@@ -200,35 +200,42 @@ save(fit,
 load('Rout/fit_01.RData')
 
 
+# Kappa (age-transmission modifier)
 rstan::traceplot(fit, pars = 'beta_kappa_a')
 rstan::traceplot(fit, pars = 'h_kappa_a')
-rstan::traceplot(fit, pars = 'gamma_kappa_pr')
+rstan::traceplot(fit, pars = 'gamma_kappa_pr_base')
+rstan::traceplot(fit, pars = 'sigma_gamma_kappa')
 rstan::traceplot(fit, pars = 'sigma_delta_kappa')
-rstan::traceplot(fit, pars = 'sigma_u_kappa')
-rstan::traceplot(fit, pars = 'rho_kappa')
 
+# CFR (case fatality rate)
 rstan::traceplot(fit, pars = 'beta_CFR_a')
 rstan::traceplot(fit, pars = 'h_CFR_a')
-rstan::traceplot(fit, pars = 'gamma_CFR_pr')
+rstan::traceplot(fit, pars = 'gamma_CFR_pr_base')
+rstan::traceplot(fit, pars = 'sigma_gamma_CFR')
 
-
-rstan::traceplot(fit, pars = 'alpha_Se_yr')
+# Case detection sensitivity (Se)
+rstan::traceplot(fit, pars = 'alpha_Se_yr_base')
 rstan::traceplot(fit, pars = 'sigma_alpha_Se')
 rstan::traceplot(fit, pars = 'sigma_delta_Se')
-rstan::traceplot(fit, pars = 'rho_Se')
+rstan::traceplot(fit, pars = 'delta_Se_s')
 
+
+# False positives (FP)
+rstan::traceplot(fit, pars = 'alpha_FP_yr_base')
 rstan::traceplot(fit, pars = 'sigma_alpha_FP')
 rstan::traceplot(fit, pars = 'sigma_delta_FP')
-rstan::traceplot(fit, pars = 'rho_FP')
 
-rstan::traceplot(fit, pars = 'sigma_gamma_CFR')
-rstan::traceplot(fit, pars = 'sigma_delta_CFR_y')
-rstan::traceplot(fit, pars = 'sigma_delta_CFR_s')
-rstan::traceplot(fit, pars = 'delta_CFR_s')
-rstan::traceplot(fit, pars = 'FP_tas[2,1,1]')
+# FOI (force of infection)
+rstan::traceplot(fit, pars = 'sigma_lambda_s') 
+rstan::traceplot(fit, pars = 'sigma_epsilon_lambda')
+rstan::traceplot(fit, pars = 'rho_lambda')  # AR(1) coefficient
 
-rstan::traceplot(fit, pars = 'delta_Se_s')
+# Clinical fraction
 rstan::traceplot(fit, pars = 'nu_a')
+
+# NB2 dispersion
+rstan::traceplot(fit, pars = 'phi_c')
+rstan::traceplot(fit, pars = 'phi_d')
 
 
 
