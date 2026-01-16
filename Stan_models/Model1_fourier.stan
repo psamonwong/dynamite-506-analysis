@@ -35,8 +35,8 @@ transformed data {
 
 parameters{
     // Overdispersion parameters for monthly totals (NB2)
-    real<lower=0> phi_c;           // dispersion for reported cases totals
-    real<lower=0> phi_d;           // dispersion for reported deaths totals
+    real<lower=1e-09> phi_c;           // dispersion for reported cases totals
+    real<lower=1e-09> phi_d;           // dispersion for reported deaths totals
 
     // Baseline FOI: province intercept + yearly random effect
     array[S] real alpha_lambda_s;          // province-specific baseline log-FOI
@@ -443,7 +443,48 @@ model {
 
 
 generated quantities {
+    // Log-likelihood for leave-one-out cross-validation (loo package)
+    // Pointwise log-likelihood for each observation
   
+    array[T, S] real log_lik_case;    // log-likelihood for monthly cases
+    array[T, S] real log_lik_death;   // log-likelihood for monthly deaths
+    array[Y, S] real log_lik_case_age;  // log-likelihood for yearly age composition (cases)
+    array[Y, S] real log_lik_death_age; // log-likelihood for yearly age composition (deaths)
+
+    // Compute log-likelihood for monthly totals
+    for(s_ind in 1:S){
+        for(t_ind in 1:T){
+            log_lik_case[t_ind, s_ind] = neg_binomial_2_lpmf(R_case_ts[t_ind, s_ind] | mu_case_ts[t_ind, s_ind], phi_c);
+            log_lik_death[t_ind, s_ind] = neg_binomial_2_lpmf(R_death_ts[t_ind, s_ind] | mu_death_ts[t_ind, s_ind], phi_d);
+        }
+    }
+  
+    // Compute log-likelihood for yearly age composition
+    for(s_ind in 1:S){
+        for(y_ind in 1:Y){
+            array[A] int R_case_age; 
+            array[A] int R_death_age;
+            int N_case_ys = 0;
+            int N_death_ys = 0;
+      
+            for(a_ind in 1:A){
+                R_case_age[a_ind] = R_case_yas[y_ind, a_ind, s_ind];
+                R_death_age[a_ind] = R_death_yas[y_ind, a_ind, s_ind];
+                N_case_ys += R_case_age[a_ind];
+                N_death_ys += R_death_age[a_ind];
+            }
+      
+            if(N_case_ys > 0)
+                log_lik_case_age[y_ind, s_ind] = multinomial_lpmf(R_case_age | q_case_ys[y_ind, s_ind]);
+            else
+                log_lik_case_age[y_ind, s_ind] = 0;
+        
+            if(N_death_ys > 0)
+                log_lik_death_age[y_ind, s_ind] = multinomial_lpmf(R_death_age | q_death_ys[y_ind, s_ind]);
+            else
+                log_lik_death_age[y_ind, s_ind] = 0;
+        }
+    }
 }
 
 

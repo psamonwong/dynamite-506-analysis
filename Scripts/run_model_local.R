@@ -5,9 +5,6 @@ library(rstan)
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
 
-mod <- stan_model(here("Stan_models", "Model1_fourier.stan"), verbose = T)
-
-
 #############################
 # DATA PREPARATION (same as sandbox3.R except p_y removed)
 #############################
@@ -186,14 +183,42 @@ iter <- getOption("stan.iter", 2000)
 warmup <- getOption("stan.warmup", 1000)
 chains <- getOption("stan.chains", 4)
 thin <- getOption("stan.thin", 4)
-seed <- getOption("stan.seed", 1234L)
+seed <- getOption("stan.seed", 124L)
 message(sprintf("Sampling: iter=%d warmup=%d chains=%d thin=%d", iter, warmup, chains, thin))
 
+mod <- stan_model(here("Stan_models", "Model1_fourier.stan"), verbose = T)
 fit <- rstan::sampling(object = mod, data = stan_data, iter = iter, warmup = warmup, cores = 4,
                        chains = chains, thin = thin, seed = seed, 
-                       control = list(adapt_delta = 0.90, max_treedepth = 12))
+                       control = list(adapt_delta = 0.90, max_treedepth = 12),
+                       pars = c(
+                         # Hyperparameters
+                         "phi_c", "phi_d",
+                         "sigma_lambda_s", "sigma_epsilon_lambda",
+                         "sigma_alpha_Se", "sigma_delta_Se",
+                         "sigma_alpha_FP", "sigma_delta_FP",
+                         "sigma_gamma_kappa", "sigma_delta_kappa",
+                         # "sigma_gamma_CFR",  # fixed in transformed data
+                         
+                         # Key parameters (high-level, interpretable)
+                         "nu",
+                         "alpha_lambda_s",
+                         "beta_kappa_a", "h_kappa_a", "gamma_kappa_pr_base", "gamma_kappa_pr",
+                         "beta_CFR_a", "h_CFR_a", "gamma_CFR_pr_base", "gamma_CFR_pr",
+                         "alpha_Se_yr_base", "alpha_Se_yr", "delta_Se_s",
+                         "alpha_FP_yr_base", "alpha_FP_yr", "delta_FP_s",
+                         "a_cos", "a_sin",
+                         
+                         # Transformed parameters (derived quantities)
+                         "kappa_age_yas", "CFR_yas",
+                         "mu_case_ts", "mu_death_ts",
+                         "q_case_ys", "q_death_ys",
+                         
+                         # Generated quantities
+                         "log_lik_case", "log_lik_death", "log_lik_case_age", "log_lik_death_age"
+                       ),
+                       include = TRUE)
 
-save(fit,
+save(fit, stan_data,
      file = here("Rout", "fit_01.RData"))
 
 
@@ -211,7 +236,7 @@ rstan::traceplot(fit, pars = 'sigma_delta_kappa')
 rstan::traceplot(fit, pars = 'beta_CFR_a')
 rstan::traceplot(fit, pars = 'h_CFR_a')
 rstan::traceplot(fit, pars = 'gamma_CFR_pr_base')
-rstan::traceplot(fit, pars = 'sigma_gamma_CFR')
+#rstan::traceplot(fit, pars = 'sigma_gamma_CFR')
 
 # Case detection sensitivity (Se)
 rstan::traceplot(fit, pars = 'alpha_Se_yr_base')
@@ -228,17 +253,14 @@ rstan::traceplot(fit, pars = 'sigma_delta_FP')
 # FOI (force of infection)
 rstan::traceplot(fit, pars = 'sigma_lambda_s') 
 rstan::traceplot(fit, pars = 'sigma_epsilon_lambda')
-rstan::traceplot(fit, pars = 'rho_lambda')  # AR(1) coefficient
+#rstan::traceplot(fit, pars = 'rho_lambda')  # AR(1) coefficient
 
 # Clinical fraction
-rstan::traceplot(fit, pars = 'nu_a')
+rstan::traceplot(fit, pars = 'nu')
 
 # NB2 dispersion
 rstan::traceplot(fit, pars = 'phi_c')
 rstan::traceplot(fit, pars = 'phi_d')
-
-
-
 
 
 names(fit)
