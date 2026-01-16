@@ -30,7 +30,7 @@ data {
 }
 
 transformed data {
-    
+    real sigma_gamma_CFR = 0.01;  // fixed small value — data don't inform this
 }
 
 parameters{
@@ -78,7 +78,6 @@ parameters{
     array[R] real gamma_CFR_pr_base;     // period-1 anchor (positive) per region
     array[P-1, R] real gamma_CFR_pr_innov;        // RW innovations for periods 2..P
     ordered[A] raw_h_CFR_a;                     // monotone-increasing raw age-loading
-    real<lower=0> sigma_gamma_CFR;              // RW innovation SD for gamma_CFR_pr
 
     // Hyperparameters for kappa evolution
     real<lower=0> sigma_gamma_kappa;          // RW innovation SD (gamma_kappa_pr)
@@ -327,9 +326,6 @@ model {
     // False positives FP hyperpriors
     sigma_alpha_FP ~ exponential(0.5);
     sigma_delta_FP ~ exponential(2);
-
-    // CFR hyperpriors
-    sigma_gamma_CFR ~ exponential(1);
 
     // Kappa (Lee–Carter) priors
     beta_kappa_a ~ normal(0, 1);        // baseline age RR
