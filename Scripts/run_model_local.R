@@ -15,9 +15,9 @@ case_age_data <- read_csv(here("Analysis_data", "Scrub_typhus", "case_death_by_a
 population_data <- read_csv(here("Analysis_data", "Population", "population_data_summarised.csv"))
 
 # Setup
-area <- c( "Chiang Rai", "Lampang",  "Nakhon Ratchasima", "Surin", "Songkhla", "Phatthalung", "Uttaradit", "Tak")
-period_size <- 3
-n_periods <- 3
+area <- case_data %>% distinct(Area) %>% pull(Area)#c( "Chiang Rai", "Lampang",  "Nakhon Ratchasima", "Surin", "Songkhla", "Phatthalung", "Uttaradit", "Tak")
+period_size <- 4
+n_periods <- 5
 start_year <- 2004
 year_selected <- seq(from = start_year, to = start_year + period_size * n_periods - 1)
 
@@ -177,6 +177,14 @@ stan_data <- list(
   region_id = region_id,
   H = H
 )
+
+
+save(stan_data,
+     file = here("Rout", "stan_data_01.RData"))
+###############################
+system(paste('Rscript --vanilla Scripts/run_cmd.R'))
+##############################
+
 
 # Sampling settings
 iter <- getOption("stan.iter", 2000)
