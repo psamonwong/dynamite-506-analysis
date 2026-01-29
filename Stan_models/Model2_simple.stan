@@ -32,7 +32,7 @@ parameters {
   // ===== Fixed effects =====
   real lambda_0;                         // Baseline log force of infection
   real alpha_0_tau;                      // Baseline log testing intensity
-  real alpha_0_se;                       // Baseline logit sensitivity
+  real<lower=0, upper=1> alpha_0_se;     // Baseline sensitivity (probability scale)
   real<lower=0, upper=1> pi_fp;         // False positive rate
   
   // ===== Fourier seasonality baselines (period–region) =====
@@ -40,8 +40,7 @@ parameters {
   array[H, P, R] real B_pr;  // Sine coefficients by harmonic/period/region
   
   // ===== Age effect baselines =====
-  real beta_0;                // Age effect intercept
-  vector[A-1] beta_a_raw;     // Age-specific deviations (centered)
+  vector[A-1] beta_a_raw;     // Age-specific deviations (centered, first group = 0)
   
   // ===== Hierarchical SDs =====
   real<lower=0> sigma_tau_pr;            // Testing: period-region
@@ -84,7 +83,6 @@ transformed parameters {
   array[Y,M,S] real kappa_month_yms;            // Monthly seasonality multipliers
   array[Y,A,S] real kappa_age_yas;              // Age-specific multipliers
   vector[A] beta_a;                             // Full age effects (incl. reference)
-  array[Y,S] real<lower=0, upper=1> Se_ys;      // Case detection sensitivity by (y_ind, s_ind)
   
   // ===== Expected values =====
   array[T,S] real<lower=0> mu_case_ts;          // Monthly mean cases
@@ -162,9 +160,15 @@ transformed parameters {
     for (s_ind in 1:S) {
       vector[A] log_kappa_age;
       for (a_ind in 1:A) {
-        log_kappa_age[a_ind] = beta_0 + beta_a[a_ind] + 
+        log_kappa_age[a_ind] = beta_a[a_ind] + 
           epsilon_age_pr[period_id[y_ind], region_id[s_ind]];
         kappa_age_yas[y_ind, a_ind, s_ind] = exp(log_kappa_age[a_ind]);
+      }
+      // Normalize to mean 1 across ages (identifiability constraint)
+      real sum_kappa_a = 0;
+      for (a_ind in 1:A) sum_kappa_a += kappa_age_yas[y_ind, a_ind, s_ind];
+      for (a_ind in 1:A) {
+        kappa_age_yas[y_ind, a_ind, s_ind] = A * kappa_age_yas[y_ind, a_ind, s_ind] / sum_kappa_a;
       }
     }
   }
@@ -175,9 +179,6 @@ transformed parameters {
       tau_ys[y_ind, s_ind] = exp(alpha_0_tau + 
         epsilon_tau_pr[period_id[y_ind], region_id[s_ind]] + 
         epsilon_tau_ys[y_ind, s_ind]);
-      // Precompute sensitivity at (y_ind, s_ind)
-      // Fix gamma = 1.0 to remove identifiability issues
-      Se_ys[y_ind, s_ind] = inv_logit(alpha_0_se + log(tau_ys[y_ind, s_ind]));
     }
   }
   
@@ -196,9 +197,8 @@ transformed parameters {
     int m_ind = month_id[t_ind];
     
     for (s_ind in 1:S) {
-      real Se_local = Se_ys[y_ind, s_ind];
       real mu_I_sum = 0;   // sum of clinical infections across ages
-      int Nsum = 0;        // sum of population across ages
+      real mu_FP_sum = 0;  // sum of false positives across ages
       
       for (a_ind in 1:A) {
         int N_local = N_tas[t_ind, a_ind, s_ind];
@@ -206,13 +206,16 @@ transformed parameters {
           kappa_month_yms[y_ind, m_ind, s_ind] *
           kappa_age_yas[y_ind, a_ind, s_ind];
         real I_local = S_tas[t_ind, a_ind, s_ind] * N_local * (1 - exp(-lambda_local));
-        mu_I_sum += I_local; // accumulate clinical infections across ages for month total 
-        Nsum += N_local; // accumulate population across ages for month total 
-        // Update yearly-by-age with per-age FP allocation
-        C_yas[y_ind, a_ind, s_ind] += I_local * Se_local + N_local * tau_ys[y_ind, s_ind] * pi_fp; // yearly cases by age 
+        real FP_local = pi_fp * lambda_local * N_local;  // FP scales with FOI
+        
+        mu_I_sum += I_local;   // accumulate clinical infections
+        mu_FP_sum += FP_local; // accumulate false positives
+        
+        // Update yearly-by-age
+        C_yas[y_ind, a_ind, s_ind] += I_local * alpha_0_se + FP_local;
       }
-      // Monthly total: infections * Se + FP across ages
-      mu_case_ts[t_ind, s_ind] = mu_I_sum * Se_local + tau_ys[y_ind, s_ind] * pi_fp * Nsum; // monthly cases 
+      // Monthly total: infections * Se + FP
+      mu_case_ts[t_ind, s_ind] = mu_I_sum * alpha_0_se + mu_FP_sum;
     }
   }
   
@@ -241,11 +244,10 @@ model {
   // ----- Fixed effects -----
   lambda_0 ~ normal(-3, 2);      // Baseline log FOI centered at reasonable value
   alpha_0_tau ~ normal(-2, 2);   // Baseline log testing intensity
-  alpha_0_se ~ normal(0, 1.5);   // Baseline logit sensitivity
-  beta_0 ~ normal(0, 2);         // Age effect intercept
   
   // ----- Bounded parameters -----
-  pi_fp ~ beta(2, 98);   // Prior mean ~2%
+  alpha_0_se ~ beta(50, 10);     // Prior mean ~0.83 (reasonable sensitivity)
+  pi_fp ~ beta(2, 98);           // Prior mean ~2%
   
   // ----- Seasonality baselines -----
   for (h in 1:H) {
@@ -262,13 +264,13 @@ model {
   sigma_age ~ normal(0, 0.1);
   
   // ----- Hierarchical SDs -----
-  sigma_tau_pr ~ normal(0, 1);
-  sigma_tau_ys ~ normal(0, 0.01);
-  sigma_lambda_pr ~ normal(0, 1);
-  sigma_lambda_ys ~ normal(0, 0.01);
-  sigma_A_ys ~ normal(0, 0.1);   // Year–province seasonality noise SD
-  sigma_B_ys ~ normal(0, 0.1);   // Year–province seasonality noise SD
-  sigma_age_pr ~ normal(0, 1);
+  sigma_tau_pr ~ exponential(1);
+  sigma_tau_ys ~ exponential(10);    // mean = 0.1
+  sigma_lambda_pr ~ exponential(1);
+  sigma_lambda_ys ~ exponential(10); // mean = 0.1
+  sigma_A_ys ~ exponential(5);       // mean = 0.2
+  sigma_B_ys ~ exponential(5);       // mean = 0.2
+  sigma_age_pr ~ exponential(1);
   
   // ----- Overdispersion -----
   phi_c ~ normal(5, 0.25);  // Better prior for positive scale parameter

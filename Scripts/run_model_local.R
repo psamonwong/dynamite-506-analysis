@@ -182,12 +182,43 @@ stan_data <- list(
 
 
 save(stan_data,
-     file = here("Rout", "stan_data_02.RData"))
-###############################
+     file = here("Rout", "stan_data_01.RData"))
+
+
+#####################################
+# PARAMETER ESTIMATION VIA OPTIMIZATION
+#####################################
+library(here)
+library(tidyverse)
+library(rstan)
+load(here("Rout", "stan_data_01.RData"))
+
+mod <- stan_model(here("Stan_models", "Model1_fourier.stan"), verbose = FALSE)
+
+fits <- replicate(20,
+ optimizing(mod, data = stan_data, iter = 10000, verbose = TRUE, 
+                      hessian = FALSE, as_vector = FALSE),
+  simplify = FALSE
+)
+
+values <- sapply(fits, function(f) f$par$sigma_delta_Se)
+values %>% hist()
+
+
+
+opt_fit$par[names(opt_fit$par) %in% c("sigma_delta_Se", "sigma_delta_Se_y", "alpha_Se_r", "beta_FP",
+                                        "sigma_delta_FP", "sigma_delta_FP_y", "alpha_FP_r")]
+
+save(opt_fit, stan_data, file = here("Rout", "opt_fit_01.RData"))
+message(sprintf("Optimization complete. Value: %.2f", opt_fit$value))
+
+
+#####################################
 system(paste('Rscript --vanilla Scripts/run_cmd.R'))
 ##############################
 
-load('Rout/fit_02.RData')
+load('Rout/fit_01.RData')
+
 
 
 
@@ -199,35 +230,74 @@ load('Rout/fit_02.RData')
 
 library(rstan)
 
+# Model 1 traceplots - High-level interpretable parameters only
 plots <- list(
-  fixed = rstan::traceplot(
+  dispersions = rstan::traceplot(
     fit,
-    pars = c("lambda_0", "alpha_0_tau", "alpha_0_se", "beta_0", "pi_fp"),
+    pars = c("phi_c", "phi_d"),
     inc_warmup = FALSE
   ),
+  
+  foi_hierarchy = rstan::traceplot(
+    fit,
+    pars = c("alpha_lambda_r", "sigma_lambda_r", "sigma_lambda_s"),
+    inc_warmup = FALSE
+  ),
+  
   seasonality_baselines = rstan::traceplot(
     fit,
-    pars = c("A_pr", "B_pr"),
+    pars = c("a_cos"),
     inc_warmup = FALSE
   ),
-  age_effects = rstan::traceplot(
+
+    seasonality_baselines2 = rstan::traceplot(
     fit,
-    pars = c("beta_a_raw", "sigma_age"),
+    pars = c("a_sin"),
     inc_warmup = FALSE
   ),
-  scales = rstan::traceplot(
+
+      seasonality_baselines2 = rstan::traceplot(
     fit,
-    pars = c(
-      "sigma_tau_pr", "sigma_tau_ys",
-      "sigma_lambda_pr", "sigma_lambda_ys",
-      "sigma_A_ys", "sigma_B_ys",
-      "sigma_age_pr"
-    ),
+    pars = c("a_sin"),
     inc_warmup = FALSE
   ),
-  overdispersion = rstan::traceplot(
+  
+  age_kappa_structure1 = rstan::traceplot(
     fit,
-    pars = "phi_c",
+    pars = c("alpha_kappa_a"),
+    inc_warmup = FALSE
+  ),
+    age_kappa_structure2 = rstan::traceplot(
+    fit,
+    pars = c("alpha_kappa_age"),
+    inc_warmup = FALSE
+  ),
+    age_kappa_structure3 = rstan::traceplot(
+    fit,
+    pars = c("gamma_kappa_pr", "sigma_gamma_kappa"),
+    inc_warmup = FALSE
+  ),
+  
+  se_fp_hyperparameters = rstan::traceplot(
+    fit,
+    pars = c("sigma_delta_Se", "sigma_delta_Se_y", "sigma_delta_FP", "sigma_delta_FP_y"),
+    inc_warmup = FALSE
+  ),
+  
+  cfr_structure = rstan::traceplot(
+    fit,
+    pars = c("alpha_CFR_a"),
+    inc_warmup = FALSE
+  ),
+
+    cfr_structure2 = rstan::traceplot(
+    fit,
+    pars = c("alpha_CFR_age"),
+    inc_warmup = FALSE
+  ),
+      cfr_structure2 = rstan::traceplot(
+    fit,
+    pars = c("gamma_CFR_pr"),
     inc_warmup = FALSE
   )
 )
@@ -235,42 +305,57 @@ plots <- list(
 plots
 
 
+# plots <- list(
+#   fixed = rstan::traceplot(
+#     fit,
+#     pars = c("lambda_0", "alpha_0_tau", "alpha_0_se", "pi_fp"),
+#     inc_warmup = FALSE
+#   ),
+#   seasonality_baselines = rstan::traceplot(
+#     fit,
+#     pars = c("A_pr", "B_pr"),
+#     inc_warmup = FALSE
+#   ),
+#   age_effects = rstan::traceplot(
+#     fit,
+#     pars = c("beta_a_raw", "beta_a", "sigma_age"),
+#     inc_warmup = FALSE
+#   ),
+#   scales = rstan::traceplot(
+#     fit,
+#     pars = c(
+#       "sigma_tau_pr", "sigma_tau_ys",
+#       "sigma_lambda_pr", "sigma_lambda_ys",
+#       "sigma_A_ys", "sigma_B_ys",
+#       "sigma_age_pr"
+#     ),
+#     inc_warmup = FALSE
+#   ),
+#   overdispersion = rstan::traceplot(
+#     fit,
+#     pars = "phi_c",
+#     inc_warmup = FALSE
+#   ),
+#   random_effects_foi = rstan::traceplot(
+#     fit,
+#     pars = c("epsilon_lambda_pr", "epsilon_lambda_ys"),
+#     inc_warmup = FALSE
+#   ),
+#   random_effects_seasonality = rstan::traceplot(
+#     fit,
+#     pars = c("epsilon_A_ys", "epsilon_B_ys"),
+#     inc_warmup = FALSE
+#   ),
+#   random_effects_age = rstan::traceplot(
+#     fit,
+#     pars = "epsilon_age_pr",
+#     inc_warmup = FALSE
+#   ),
+#   derived_quantities = rstan::traceplot(
+#     fit,
+#     pars = c("log_lambda_base", "kappa_month_yms", "kappa_age_yas"),
+#     inc_warmup = FALSE
+#   )
+# )
 
-
-# Kappa (age-transmission modifier)
-rstan::traceplot(fit, pars = 'beta_kappa_a')
-rstan::traceplot(fit, pars = 'h_kappa_a')
-rstan::traceplot(fit, pars = 'gamma_kappa_pr_base')
-rstan::traceplot(fit, pars = 'sigma_gamma_kappa')
-rstan::traceplot(fit, pars = 'sigma_delta_kappa')
-
-# CFR (case fatality rate)
-rstan::traceplot(fit, pars = 'beta_CFR_a')
-rstan::traceplot(fit, pars = 'h_CFR_a')
-rstan::traceplot(fit, pars = 'gamma_CFR_pr_base')
-#rstan::traceplot(fit, pars = 'sigma_gamma_CFR')
-
-# Case detection sensitivity (Se)
-rstan::traceplot(fit, pars = 'alpha_Se_yr_base')
-rstan::traceplot(fit, pars = 'sigma_alpha_Se')
-rstan::traceplot(fit, pars = 'sigma_delta_Se')
-rstan::traceplot(fit, pars = 'delta_Se_s')
-
-
-# False positives (FP)
-rstan::traceplot(fit, pars = 'alpha_FP_yr_base')
-rstan::traceplot(fit, pars = 'sigma_alpha_FP')
-rstan::traceplot(fit, pars = 'sigma_delta_FP')
-rstan::traceplot(fit, pars = 'delta_FP_s')
-
-
-# FOI (force of infection)
-rstan::traceplot(fit, pars = 'sigma_lambda_s') 
-rstan::traceplot(fit, pars = 'sigma_epsilon_lambda')
-#rstan::traceplot(fit, pars = 'rho_lambda')  # AR(1) coefficient
-
-# NB2 dispersion
-rstan::traceplot(fit, pars = 'phi_c')
-
-
-names(fit)
+# plots
