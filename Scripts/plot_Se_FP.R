@@ -126,5 +126,5 @@ plot_region_report_decomposition <- function(decomp_df) {
 
 # Example
 decomp <- summarize_region_report_decomposition()
-G_decomp <- plot_region_report_decomposition(decomp)
+G_decomp <- plot_region_report_decomposition(out)
 G_decomp

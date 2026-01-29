@@ -166,7 +166,7 @@ transformed parameters {
 
     // Age sensitivity h_kappa_a (ordered -> center -> L2-normalize)
     {
-    vector[A] h_kappa_a_raw = raw_h_kappa_a; // `ordered[A]` ensures monotone increase
+    vector[A] h_kappa_a_raw = raw_h_kappa_a; // ordered; will be centered and L2-normalized (order preserved)
     vector[A] h_kappa_a_centered = h_kappa_a_raw - rep_vector(mean(h_kappa_a_raw), A);
     real h_kappa_a_norm2 = dot_product(h_kappa_a_centered, h_kappa_a_centered);  // sum(centered^2)
     h_kappa_a = h_kappa_a_centered / sqrt(h_kappa_a_norm2 + 1e-12); // preserves monotonicity
@@ -200,7 +200,7 @@ transformed parameters {
     }
 
     {
-    vector[A] h_CFR_a_raw = raw_h_CFR_a; // ordered ascending
+    vector[A] h_CFR_a_raw = raw_h_CFR_a; // ordered; will be centered and L2-normalized (order preserved)
     vector[A] h_CFR_a_centered = h_CFR_a_raw - rep_vector(mean(h_CFR_a_raw), A);
     real h_CFR_a_norm2 = dot_product(h_CFR_a_centered, h_CFR_a_centered);
     h_CFR_a = h_CFR_a_centered / sqrt(h_CFR_a_norm2 + 1e-12);

@@ -214,7 +214,7 @@ derive_I_clinical_totals <- function(s_idx, probs = c(0.025, 0.5, 0.975)) {
 }
 
 
-s_toplot <- 8
+s_toplot <- 1
 I_monthly <- derive_I_clinical_totals(s_idx = s_toplot)
 plot_data <- ppc_cases_by_province(s_idx = s_toplot)
 
@@ -223,20 +223,12 @@ ggplot(plot_data, aes(x = date)) +
   geom_line(aes(y = yrep_q500), color = "steelblue", linewidth = 1) +
   geom_point(aes(y = observed_case), color = "black", size = 1.6, alpha = 0.6) +
   #Overlay expected new clinical infections (monthly totals)
-  geom_ribbon(
-    data = I_monthly,
-    aes(x = date, ymin = I_q025, ymax = I_q975),
-    fill = "firebrick",
-    alpha = 0.15,
-    inherit.aes = FALSE
-  ) +
-  geom_line(
-    data = I_monthly,
-    aes(x = date, y = I_q500),
-    color = "firebrick",
-    linewidth = 1,
-    inherit.aes = FALSE
-  ) +
+  geom_ribbon(data = I_monthly,
+              aes(x = date, ymin = I_q025, ymax = I_q975), fill = "firebrick",
+                  alpha = 0.15, inherit.aes = FALSE) +
+  geom_line(data = I_monthly,
+            aes(x = date, y = I_q500), color = "firebrick", linewidth = 1,
+                inherit.aes = FALSE) +
   labs(x = "", y = "Reported cases",
        title = "Prediction vs observed reported cases",
        subtitle = unique(plot_data$province)) +

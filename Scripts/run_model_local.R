@@ -15,9 +15,12 @@ case_age_data <- read_csv(here("Analysis_data", "Scrub_typhus", "case_death_by_a
 population_data <- read_csv(here("Analysis_data", "Population", "population_data_summarised.csv"))
 
 # Setup
-area <- case_data %>% distinct(Area) %>% pull(Area)#c( "Chiang Rai", "Lampang",  "Nakhon Ratchasima", "Surin", "Songkhla", "Phatthalung", "Uttaradit", "Tak")
-period_size <- 4
-n_periods <- 5
+area <- 
+  #case_data %>% distinct(Area) %>% pull(Area)
+   c( "Chiang Rai", "Lampang",  "Lamphun", "Songkhla", "Phatthalung", "Narathiwat",
+    "Uttaradit", "Tak", "Phitsanulok")
+period_size <- 5
+n_periods <- 4
 start_year <- 2004
 year_selected <- seq(from = start_year, to = start_year + period_size * n_periods - 1)
 
@@ -179,7 +182,7 @@ stan_data <- list(
 )
 
 
-save(stan_data,
+save(stan_data, calendar, site_levels, region_levels, year_levels, age_levels,
      file = here("Rout", "stan_data_01.RData"))
 ###############################
 system(paste('Rscript --vanilla Scripts/run_cmd.R'))
@@ -239,6 +242,8 @@ rstan::traceplot(fit, pars = 'h_kappa_a')
 rstan::traceplot(fit, pars = 'gamma_kappa_pr_base')
 rstan::traceplot(fit, pars = 'sigma_gamma_kappa')
 rstan::traceplot(fit, pars = 'sigma_delta_kappa')
+rstan::traceplot(fit, pars = 'delta_kappa_ys')
+
 
 # CFR (case fatality rate)
 rstan::traceplot(fit, pars = 'beta_CFR_a')
@@ -257,6 +262,7 @@ rstan::traceplot(fit, pars = 'delta_Se_s')
 rstan::traceplot(fit, pars = 'alpha_FP_yr_base')
 rstan::traceplot(fit, pars = 'sigma_alpha_FP')
 rstan::traceplot(fit, pars = 'sigma_delta_FP')
+rstan::traceplot(fit, pars = 'delta_FP_s')
 
 # FOI (force of infection)
 rstan::traceplot(fit, pars = 'sigma_lambda_s') 
