@@ -15,10 +15,8 @@ case_age_data <- read_csv(here("Analysis_data", "Scrub_typhus", "case_death_by_a
 population_data <- read_csv(here("Analysis_data", "Population", "population_data_summarised.csv"))
 
 # Setup
-area <- 
-  #case_data %>% distinct(Area) %>% pull(Area)
-   c( "Chiang Rai", "Lampang",  "Lamphun", "Songkhla", "Phatthalung", "Narathiwat",
-    "Uttaradit", "Tak", "Phitsanulok")
+area <- #case_data %>% distinct(Area) %>% pull(Area)
+c( "Chiang Rai", "Lampang",  "Nakhon Ratchasima", "Surin", "Songkhla", "Phatthalung", "Uttaradit", "Tak")
 period_size <- 5
 n_periods <- 4
 start_year <- 2004
@@ -156,7 +154,8 @@ N_tas <- N_ay[year_id, , , drop = FALSE]   # dims: [T, A, S]
 S_tas <- array(1.0, dim = c(T, A, S))
 
 H <- 3
-
+cos_hm <- outer(1:H, 1:M, function(h, m) cos(2 * pi * m / M * h))  # [H, M]
+sin_hm <- outer(1:H, 1:M, function(h, m) sin(2 * pi * m / M * h))  # [H, M]
 
 
 # Prepare data for Stan
@@ -178,62 +177,64 @@ stan_data <- list(
   month_id = month_id,
   period_id = period_id,
   region_id = region_id,
-  H = H
+  H = H, cos_hm = cos_hm, sin_hm = sin_hm
 )
 
 
-save(stan_data, calendar, site_levels, region_levels, year_levels, age_levels,
-     file = here("Rout", "stan_data_01.RData"))
+save(stan_data,
+     file = here("Rout", "stan_data_02.RData"))
 ###############################
 system(paste('Rscript --vanilla Scripts/run_cmd.R'))
 ##############################
 
-
-# Sampling settings
-iter <- getOption("stan.iter", 2000)
-warmup <- getOption("stan.warmup", 1000)
-chains <- getOption("stan.chains", 4)
-thin <- getOption("stan.thin", 4)
-seed <- getOption("stan.seed", 124L)
-message(sprintf("Sampling: iter=%d warmup=%d chains=%d thin=%d", iter, warmup, chains, thin))
-
-mod <- stan_model(here("Stan_models", "Model1_fourier.stan"), verbose = T)
-fit <- rstan::sampling(object = mod, data = stan_data, iter = iter, warmup = warmup, cores = 4,
-                       chains = chains, thin = thin, seed = seed, 
-                       control = list(adapt_delta = 0.90, max_treedepth = 12),
-                       pars = c(
-                         # Hyperparameters
-                         "phi_c", "phi_d",
-                         "sigma_lambda_s", "sigma_epsilon_lambda",
-                         "sigma_alpha_Se", "sigma_delta_Se",
-                         "sigma_alpha_FP", "sigma_delta_FP",
-                         "sigma_gamma_kappa", "sigma_delta_kappa",
-                         # "sigma_gamma_CFR",  # fixed in transformed data
-                         
-                         # Key parameters (high-level, interpretable)
-                         "nu",
-                         "alpha_lambda_s",
-                         "beta_kappa_a", "h_kappa_a", "gamma_kappa_pr_base", "gamma_kappa_pr",
-                         "beta_CFR_a", "h_CFR_a", "gamma_CFR_pr_base", "gamma_CFR_pr",
-                         "alpha_Se_yr_base", "alpha_Se_yr", "delta_Se_s",
-                         "alpha_FP_yr_base", "alpha_FP_yr", "delta_FP_s",
-                         "a_cos", "a_sin",
-                         
-                         # Transformed parameters (derived quantities)
-                         "kappa_age_yas", "CFR_yas",
-                         "mu_case_ts", "mu_death_ts",
-                         "q_case_ys", "q_death_ys",
-                         
-                         # Generated quantities
-                         "log_lik_case", "log_lik_death", "log_lik_case_age", "log_lik_death_age"
-                       ),
-                       include = TRUE)
-
-save(fit, stan_data,
-     file = here("Rout", "fit_01.RData"))
+load('Rout/fit_02.RData')
 
 
-load('Rout/fit_01.RData')
+
+# "lambda_0", "alpha_0_tau", "gamma", 'beta_0, nu, B0, beta_a_raw
+
+# sigma_tau_pr sigma_tau_ys  sigma_lambda_pr sigma_lambda_ys
+# sigma_seasonality_pr sigma_age_pr
+
+
+library(rstan)
+
+plots <- list(
+  fixed = rstan::traceplot(
+    fit,
+    pars = c("lambda_0", "alpha_0_tau", "alpha_0_se", "beta_0", "pi_fp"),
+    inc_warmup = FALSE
+  ),
+  seasonality_baselines = rstan::traceplot(
+    fit,
+    pars = c("A_pr", "B_pr"),
+    inc_warmup = FALSE
+  ),
+  age_effects = rstan::traceplot(
+    fit,
+    pars = c("beta_a_raw", "sigma_age"),
+    inc_warmup = FALSE
+  ),
+  scales = rstan::traceplot(
+    fit,
+    pars = c(
+      "sigma_tau_pr", "sigma_tau_ys",
+      "sigma_lambda_pr", "sigma_lambda_ys",
+      "sigma_A_ys", "sigma_B_ys",
+      "sigma_age_pr"
+    ),
+    inc_warmup = FALSE
+  ),
+  overdispersion = rstan::traceplot(
+    fit,
+    pars = "phi_c",
+    inc_warmup = FALSE
+  )
+)
+
+plots
+
+
 
 
 # Kappa (age-transmission modifier)
@@ -242,8 +243,6 @@ rstan::traceplot(fit, pars = 'h_kappa_a')
 rstan::traceplot(fit, pars = 'gamma_kappa_pr_base')
 rstan::traceplot(fit, pars = 'sigma_gamma_kappa')
 rstan::traceplot(fit, pars = 'sigma_delta_kappa')
-rstan::traceplot(fit, pars = 'delta_kappa_ys')
-
 
 # CFR (case fatality rate)
 rstan::traceplot(fit, pars = 'beta_CFR_a')
@@ -264,17 +263,14 @@ rstan::traceplot(fit, pars = 'sigma_alpha_FP')
 rstan::traceplot(fit, pars = 'sigma_delta_FP')
 rstan::traceplot(fit, pars = 'delta_FP_s')
 
+
 # FOI (force of infection)
 rstan::traceplot(fit, pars = 'sigma_lambda_s') 
 rstan::traceplot(fit, pars = 'sigma_epsilon_lambda')
 #rstan::traceplot(fit, pars = 'rho_lambda')  # AR(1) coefficient
 
-# Clinical fraction
-rstan::traceplot(fit, pars = 'nu')
-
 # NB2 dispersion
 rstan::traceplot(fit, pars = 'phi_c')
-rstan::traceplot(fit, pars = 'phi_d')
 
 
 names(fit)
