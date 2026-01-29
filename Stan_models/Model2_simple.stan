@@ -1,333 +1,165 @@
 data {
-  // ===== Dimensions =====
-  int<lower=1> T;  // Number of months (= Y * M)
-  int<lower=1> Y;  // Number of years
-  int<lower=1> A;  // Number of age groups
-  int<lower=1> S;  // Number of provinces
-  int<lower=1> R;  // Number of regions
-  int<lower=1> P;  // Number of period blocks
-  int<lower=1> M;  // Months per year (=12)
-  int<lower=1> H;  // Number of Fourier harmonics for seasonality
-  
-  // ===== Precomputed seasonality basis (H x M) =====
-  matrix[H, M] cos_hm;  // cosine basis for each harmonic and month
-  matrix[H, M] sin_hm;  // sine basis for each harmonic and month
-  
-  // ===== Index mappings =====
-  array[T] int<lower=1, upper=Y> year_id;    // Map month t to year y
-  array[T] int<lower=1, upper=M> month_id;   // Map month t to month-of-year m
-  array[Y] int<lower=1, upper=P> period_id;  // Map year y to period block p
-  array[S] int<lower=1, upper=R> region_id;  // Map province s to region r
-  
-  // ===== Population and susceptibility =====
-  array[T,A,S] int<lower=0> N_tas;                   // Population size
-  array[T,A,S] real<lower=0, upper=1> S_tas;        // Proportion susceptible
-  
-  // ===== Observed data =====
-  array[T,S] int<lower=0> R_case_ts;      // Monthly reported cases
-  array[Y,A,S] int<lower=0> R_case_yas;   // Yearly reported cases by age
+    // Dimensions
+    int<lower=1> T;                 // Number of months = Y * M
+    int<lower=1> Y;                 // number of years
+    int<lower=1> M;                 // number of months per year
+    int<lower=1> P;                 // number of period blocks
+    int<lower=1> S;                 // number of provinces
+    int<lower=1> R;                 // number of regions
+
+  // Mappings
+  array[T] int<lower=1, upper=Y> year_id;         // y(t): year corresponding to month t
+  array[T] int<lower=1, upper=M> month_id;        // m(t): month corresponding to month t
+  array[Y] int<lower=1, upper=P> period_id;       // p(y(t)): period block corresponding to month t
+  array[S] int<lower=1, upper=R> region_id;       // r(s): region corresponding to province s
+
+  // Population size
+  array[T,S] int<lower=0> N_tas;          // N_t,s population size at time t, province s
+  // Susceptible proportions
+  int S_t;                            //  S_t susceptible proportion at time t (assumed constant across provinces and time)
+  // Reported cases and deaths
+  array[T, S] int<lower=0> R_case_ts;          // R_case_t,s reported cases at time t, province s
+
+  // Seasonality configurations
+  int<lower=1> H;                 // number of Fourier harmonics
 }
 
-parameters {
-  // ===== Fixed effects =====
-  real lambda_0;                         // Baseline log force of infection
-  real alpha_0_tau;                      // Baseline log testing intensity
-  real<lower=0, upper=1> alpha_0_se;     // Baseline sensitivity (probability scale)
-  real<lower=0, upper=1> pi_fp;         // False positive rate
-  
-  // ===== Fourier seasonality baselines (period–region) =====
-  array[H, P, R] real A_pr;  // Cosine coefficients by harmonic/period/region
-  array[H, P, R] real B_pr;  // Sine coefficients by harmonic/period/region
-  
-  // ===== Age effect baselines =====
-  vector[A-1] beta_a_raw;     // Age-specific deviations (centered, first group = 0)
-  
-  // ===== Hierarchical SDs =====
-  real<lower=0> sigma_tau_pr;            // Testing: period-region
-  real<lower=0> sigma_tau_ys;            // Testing: year-province
-  real<lower=0> sigma_lambda_pr;         // FOI: period-region
-  real<lower=0> sigma_lambda_ys;         // FOI: year-province
-  real<lower=0> sigma_A_ys;              // Seasonality cos: year-province noise
-  real<lower=0> sigma_B_ys;              // Seasonality sin: year-province noise
-  real<lower=0> sigma_age_pr;            // Age: period-region
-  real<lower=0> sigma_age;               // Age: between age groups
-  
-  // ===== Overdispersion =====
-  real<lower=0> phi_c;  // Cases
-  
-  // ===== Random effects (non-centered: z-scores) =====
-  array[P,R] real z_tau_pr;        // Testing: period-region
-  array[Y,S] real z_tau_ys;        // Testing: year-province
-  array[P,R] real z_lambda_pr;     // FOI: period-region
-  array[Y,S] real z_lambda_ys;     // FOI: year-province
-  array[H,Y,S] real z_A_ys;        // Seasonality cos: year-province noise
-  array[H,Y,S] real z_B_ys;        // Seasonality sin: year-province noise
-  array[P,R] real z_age_pr;        // Age: period-region
-}
+parameters{
+  // === Dispersion parameters === //
+  real<lower=0> phi_case;               // Dispersion parameter for reported cases
+  // === Test sensitivity and specificity parameters (yearly constants) === //
+  array[Y] real<lower=0, upper=1> Se_y;        // Test sensitivity for year y
+  array[Y] real<lower=0, upper=1> Sp_y;        // Test specificity for year y
 
+  // === Force of infection parameters === //
+
+  // Baseline force of infection parameters
+  real log_lambda_0;                      // overall baseline log force of infection
+  array[S] real epsilon_lambda_s;         // province-specific random effect on baseline log force of infection
+  array[Y] real epsilon_lambda_y;         // year-specific random effect on baseline log force of infection
+
+  // Seasonal variation parameters
+  array[H, S] real a_cos;   // Fourier cosine coefficients for seasonal variation for harmonic h, province s
+  array[H, S] real a_sin;   // Fourier sine coefficients for seasonal variation for harmonic h, province s
+
+  // === Hyperparameters === //
+  real<lower=0> sigma_lambda_s;          // standard deviation of province-specific random effect on baseline log force of infection
+  real<lower=0> sigma_lambda_y;          // standard deviation of year-specific random effect on baseline log force of infection
+
+  // === Testing intensity (for false positives) === //
+  real alpha_test;                        // intercept on test-intensity logit
+  real beta_test;                         // slope for log(lambda_ts) effect on testing intensity
+  real<lower=0> tau_test_base;            // baseline tested fraction multiplier
+  array[S] real epsilon_test_s;           // province random effect on testing intensity
+  array[Y] real epsilon_test_y;           // year random effect on testing intensity
+  real<lower=0> sigma_test_s;             // sd for province testing RE
+  real<lower=0> sigma_test_y;             // sd for year testing RE
+
+}
 
 transformed parameters {
-  // ===== Scaled random effects (from non-centered z-scores) =====
-  array[P,R] real epsilon_tau_pr;
-  array[Y,S] real epsilon_tau_ys;
-  array[P,R] real epsilon_lambda_pr;
-  array[Y,S] real epsilon_lambda_ys;
-  array[H,Y,S] real epsilon_A_ys;
-  array[H,Y,S] real epsilon_B_ys;
-  array[P,R] real epsilon_age_pr;
-  
-  
-  // ===== Derived parameters =====
-  array[Y,S] real<lower=0> tau_ys;              // Testing intensity
-  array[Y,S] real log_lambda_base;              // Baseline log FOI
-  array[Y,M,S] real kappa_month_yms;            // Monthly seasonality multipliers
-  array[Y,A,S] real kappa_age_yas;              // Age-specific multipliers
-  vector[A] beta_a;                             // Full age effects (incl. reference)
-  
-  // ===== Expected values =====
-  array[T,S] real<lower=0> mu_case_ts;          // Monthly mean cases
-  array[Y,A,S] real C_yas;                      // Yearly cases by age
-  array[Y,S] vector[A] q_case_ys;               // Age composition proportions
-  
-  // ===== Scale random effects (non-centered parameterization) =====
-  for (p_ind in 1:P) {
-    for (r_ind in 1:R) {
-      epsilon_tau_pr[p_ind, r_ind] = z_tau_pr[p_ind, r_ind] * sigma_tau_pr;
-      epsilon_lambda_pr[p_ind, r_ind] = z_lambda_pr[p_ind, r_ind] * sigma_lambda_pr;
-      epsilon_age_pr[p_ind, r_ind] = z_age_pr[p_ind, r_ind] * sigma_age_pr;
+  // === Parameters declarations === //
+  array[T, S] real<lower=0> C_ts;        // C_t,s expected observed cases at time t, province s
+  array[T, S] real<lower=0> I_ts;        // I_t,s true incident cases at time t, province s
+  array[T, S] real lambda_ts;   // log force of infection at time t, province s
+  array[Y, S] real lambda_base_ys;   // baseline log force of infection at year y, province s
+  array[Y, M, S] real<lower=0> kappa_seasonal_yms;   // seasonal variation component of log force of infection at year y, province s, month m
+  array[T, S] real<lower=0> N_eff_ts;   // effective number tested driving false positives
+
+
+  // === Baseline force of infection calculation === //
+  for(y_ind in 1:Y)
+    for(s_ind in 1:S)
+      lambda_base_ys[y_ind, s_ind] = exp(log_lambda_0 + epsilon_lambda_s[s_ind] + epsilon_lambda_y[y_ind]);     // Baseline log force of infection at year y, province s 
+
+  // === Seasonal variation calculation with Fourier with H harmonics === //
+  for(y_ind in 1:Y){
+    for(s_ind in 1:S){
+      vector[M] log_kappa_yms; // log seasonal modifier for month m, year y, province s
+        for(m_ind in 1:M){
+            real theta = 2 * pi() * m_ind / M; // angle for month m
+            real f = 0;
+            for(h in 1:H){
+              // Fourier series expansion for month m with harmonics h
+              f += a_cos[h, s_ind] * cos(h * theta) +
+                   a_sin[h, s_ind] * sin(h * theta);
+            }
+            log_kappa_yms[m_ind] = f;
+        }
+        // Normalize across months to mean 1 (identifiability)
+        real sum_exp_m = 0; 
+        for(m_ind in 1:M) sum_exp_m += exp(log_kappa_yms[m_ind]); // sum over months 
+        for(m_ind in 1:M) kappa_seasonal_yms[y_ind, m_ind, s_ind] = M * exp(log_kappa_yms[m_ind])/ sum_exp_m; // normalize to mean 1
+      }
+  }
+
+  // == Force of infection calculation === //
+  for(t_ind in 1:T)
+    for(s_ind in 1:S)
+      lambda_ts[t_ind, s_ind] =  lambda_base_ys[year_id[t_ind] , s_ind] *       // Baseline log force of infection
+                                 kappa_seasonal_yms[year_id[t_ind],  month_id[t_ind], s_ind];     // Seasonal variation component of log force of infection
+
+  // === True incident cases calculation === //
+  for(t_ind in 1:T)
+    for(s_ind in 1:S)
+      I_ts[t_ind, s_ind] = N_tas[t_ind, s_ind] * S_t * (1 - exp(-lambda_ts[t_ind, s_ind]));      // True incident cases at time t, province s
+
+  // === Effective testing volume (drives false positives) === //
+  for(t_ind in 1:T){
+    int y = year_id[t_ind];
+    for(s_ind in 1:S){
+      real logit_f = alpha_test + epsilon_test_s[s_ind] + epsilon_test_y[y]
+                      + beta_test * log(lambda_ts[t_ind, s_ind] + 1e-9);
+      real f = inv_logit(logit_f); // fraction in (0,1)
+      N_eff_ts[t_ind, s_ind] = N_tas[t_ind, s_ind] * tau_test_base * f;
     }
   }
-  
-  for (h_ind in 1:H) {
-    for (y_ind in 1:Y) {
-      for (s_ind in 1:S) {
-        epsilon_A_ys[h_ind, y_ind, s_ind] = z_A_ys[h_ind, y_ind, s_ind] * sigma_A_ys;
-        epsilon_B_ys[h_ind, y_ind, s_ind] = z_B_ys[h_ind, y_ind, s_ind] * sigma_B_ys;
-      }
-    }
-  }
-  
-  for (y_ind in 1:Y) {
-    for (s_ind in 1:S) {
-      epsilon_tau_ys[y_ind, s_ind] = z_tau_ys[y_ind, s_ind] * sigma_tau_ys;
-      epsilon_lambda_ys[y_ind, s_ind] = z_lambda_ys[y_ind, s_ind] * sigma_lambda_ys;
-    }
-  }
-  
-  
-  
-  // ===== Compute baseline FOI =====
-  for (y_ind in 1:Y) {
-    for (s_ind in 1:S) {
-      log_lambda_base[y_ind, s_ind] = lambda_0 + 
-        epsilon_lambda_pr[period_id[y_ind], region_id[s_ind]] + 
-        epsilon_lambda_ys[y_ind, s_ind];
-    }
-  }
-  
-  // ===== Compute seasonality multipliers using precomputed basis =====
-  for (y_ind in 1:Y) {
-    for (s_ind in 1:S) {
-      vector[M] log_kappa_yms;
-      // Build local seasonality coefficient vectors (length H)
-      vector[H] Avec;
-      vector[H] Bvec;
-      for (h_ind in 1:H) {
-        Avec[h_ind] = A_pr[h_ind, period_id[y_ind], region_id[s_ind]] +
-          epsilon_A_ys[h_ind, y_ind, s_ind];
-        Bvec[h_ind] = B_pr[h_ind, period_id[y_ind], region_id[s_ind]] +
-          epsilon_B_ys[h_ind, y_ind, s_ind];
-      }
-      // Project onto month-specific basis columns
-      for (m_ind in 1:M) {
-        log_kappa_yms[m_ind] = dot_product(Avec, cos_hm[, m_ind]) +
-                               dot_product(Bvec, sin_hm[, m_ind]);
-      }
-      // Normalize to mean 1 (identifiability constraint)
-      real sum_exp_m = 0;
-      for (m_ind in 1:M) sum_exp_m += exp(log_kappa_yms[m_ind]);
-      for (m_ind in 1:M) {
-        kappa_month_yms[y_ind, m_ind, s_ind] = M * exp(log_kappa_yms[m_ind]) / sum_exp_m;
-      }
-    }
-  }
-  
-  // ===== Compute age-specific multipliers =====
-  beta_a[1] = 0;  // Reference age group
-  beta_a[2:A] = beta_a_raw;
-  
-  for (y_ind in 1:Y) {
-    for (s_ind in 1:S) {
-      vector[A] log_kappa_age;
-      for (a_ind in 1:A) {
-        log_kappa_age[a_ind] = beta_a[a_ind] + 
-          epsilon_age_pr[period_id[y_ind], region_id[s_ind]];
-        kappa_age_yas[y_ind, a_ind, s_ind] = exp(log_kappa_age[a_ind]);
-      }
-      // Normalize to mean 1 across ages (identifiability constraint)
-      real sum_kappa_a = 0;
-      for (a_ind in 1:A) sum_kappa_a += kappa_age_yas[y_ind, a_ind, s_ind];
-      for (a_ind in 1:A) {
-        kappa_age_yas[y_ind, a_ind, s_ind] = A * kappa_age_yas[y_ind, a_ind, s_ind] / sum_kappa_a;
-      }
-    }
-  }
-  
-  // ===== Compute testing intensity =====
-  for (y_ind in 1:Y) {
-    for (s_ind in 1:S) {
-      tau_ys[y_ind, s_ind] = exp(alpha_0_tau + 
-        epsilon_tau_pr[period_id[y_ind], region_id[s_ind]] + 
-        epsilon_tau_ys[y_ind, s_ind]);
-    }
-  }
-  
-  // ===== Initialize yearly aggregates =====
-  for (y_ind in 1:Y) {
-    for (a_ind in 1:A) {
-      for (s_ind in 1:S) {
-        C_yas[y_ind, a_ind, s_ind] = 0;
-      }
-    }
-  }
-  
-  // ===== Compute monthly totals and accumulate yearly by age =====
-  for (t_ind in 1:T) {
-    int y_ind = year_id[t_ind];
-    int m_ind = month_id[t_ind];
-    
-    for (s_ind in 1:S) {
-      real mu_I_sum = 0;   // sum of clinical infections across ages
-      real mu_FP_sum = 0;  // sum of false positives across ages
-      
-      for (a_ind in 1:A) {
-        int N_local = N_tas[t_ind, a_ind, s_ind];
-        real lambda_local = exp(log_lambda_base[y_ind, s_ind]) *
-          kappa_month_yms[y_ind, m_ind, s_ind] *
-          kappa_age_yas[y_ind, a_ind, s_ind];
-        real I_local = S_tas[t_ind, a_ind, s_ind] * N_local * (1 - exp(-lambda_local));
-        real FP_local = pi_fp * lambda_local * N_local;  // FP scales with FOI
-        
-        mu_I_sum += I_local;   // accumulate clinical infections
-        mu_FP_sum += FP_local; // accumulate false positives
-        
-        // Update yearly-by-age
-        C_yas[y_ind, a_ind, s_ind] += I_local * alpha_0_se + FP_local;
-      }
-      // Monthly total: infections * Se + FP
-      mu_case_ts[t_ind, s_ind] = mu_I_sum * alpha_0_se + mu_FP_sum;
-    }
-  }
-  
-  // ===== Compute age composition =====
-  for (y_ind in 1:Y) {
-    for (s_ind in 1:S) {
-      vector[A] C_age;
-      for (a_ind in 1:A) {
-        C_age[a_ind] = C_yas[y_ind, a_ind, s_ind];
-      }
-      if (sum(C_age) > 0) {
-        q_case_ys[y_ind, s_ind] = C_age / sum(C_age);
-      } else {
-        q_case_ys[y_ind, s_ind] = rep_vector(1.0 / A, A);
-      }
-    }
-  }
+
+  // === Observed cases calculation === //
+  for(t_ind in 1:T)
+    for(s_ind in 1:S)
+      C_ts[t_ind, s_ind] = (I_ts[t_ind, s_ind] * Se_y[year_id[t_ind]]) + ((1 - Sp_y[year_id[t_ind]]) * N_eff_ts[t_ind, s_ind]);      // Expected observed cases at time t, province s 
+
 }
 
-
 model {
-  // ========================================
-  // PRIORS
-  // ========================================
-  
-  // ----- Fixed effects -----
-  lambda_0 ~ normal(-3, 2);      // Baseline log FOI centered at reasonable value
-  alpha_0_tau ~ normal(-2, 2);   // Baseline log testing intensity
-  
-  // ----- Bounded parameters -----
-  alpha_0_se ~ beta(50, 10);     // Prior mean ~0.83 (reasonable sensitivity)
-  pi_fp ~ beta(2, 98);           // Prior mean ~2%
-  
-  // ----- Seasonality baselines -----
-  for (h in 1:H) {
-    for (p_ind in 1:P) {
-      for (r_ind in 1:R) {
-        A_pr[h, p_ind, r_ind] ~ normal(0, 0.5);
-        B_pr[h, p_ind, r_ind] ~ normal(0, 0.5);
-      }
+    // === Priors === //
+    // Dispersion parameters
+    phi_case ~ normal(0, 5);               // Prior for dispersion parameter for reported cases
+
+    // Baseline force of infection parameters
+    log_lambda_0 ~ normal(-20, 5);               // Prior for overall baseline log force of infection
+    epsilon_lambda_s ~ normal(0, sigma_lambda_s);         // Prior for province-specific random effect on baseline log force of infection
+    epsilon_lambda_y ~ normal(0, sigma_lambda_y);         // Prior for year-specific random effect on baseline log
+
+    // Seasonal variation parameters
+    for(h in 1:H){
+      a_cos[h] ~ normal(0, 1);        // Prior for Fourier cosine coefficients for seasonal variation
+      a_sin[h] ~ normal(0, 1);        // Prior for Fourier sine coefficients for seasonal variation
     }
-  }
-  
-  // ----- Age effects -----
-  beta_a_raw ~ normal(0, sigma_age);
-  sigma_age ~ normal(0, 0.1);
-  
-  // ----- Hierarchical SDs -----
-  sigma_tau_pr ~ exponential(1);
-  sigma_tau_ys ~ exponential(10);    // mean = 0.1
-  sigma_lambda_pr ~ exponential(1);
-  sigma_lambda_ys ~ exponential(10); // mean = 0.1
-  sigma_A_ys ~ exponential(5);       // mean = 0.2
-  sigma_B_ys ~ exponential(5);       // mean = 0.2
-  sigma_age_pr ~ exponential(1);
-  
-  // ----- Overdispersion -----
-  phi_c ~ normal(5, 0.25);  // Better prior for positive scale parameter
-  
-  // ----- Non-centered random effects (z-scores) -----
-  for (p_ind in 1:P) {
-    for (r_ind in 1:R) {
-      z_tau_pr[p_ind, r_ind] ~ std_normal();
-      z_lambda_pr[p_ind, r_ind] ~ std_normal();
-      z_age_pr[p_ind, r_ind] ~ std_normal();
+
+    // Sensitivity and Specificity parameters (yearly)
+    for(y_ind in 1:Y){
+      Se_y[y_ind] ~ beta(8, 2);        // Prior for test sensitivity at year y (mean 0.8)
+      Sp_y[y_ind] ~ beta(9, 1);        // Prior for test specificity at year y (mean 0.9)
     }
-  }
-  
-  for (y_ind in 1:Y) {
-    for (s_ind in 1:S) {
-      z_tau_ys[y_ind, s_ind] ~ std_normal();
-      z_lambda_ys[y_ind, s_ind] ~ std_normal();
-      for (h_ind in 1:H) {
-        z_A_ys[h_ind, y_ind, s_ind] ~ std_normal();
-        z_B_ys[h_ind, y_ind, s_ind] ~ std_normal();
-      }
-    }
-  }
-  
-  // ========================================
-  // LIKELIHOODS
-  // ========================================
-  
-  // ----- Monthly case counts (Negative Binomial - vectorized) -----
-  {
-    vector[T * S] mu_flat;
-    array[T * S] int R_flat;
-    int idx = 1;
-    for (t_ind in 1:T) {
-      for (s_ind in 1:S) {
-        mu_flat[idx] = mu_case_ts[t_ind, s_ind];
-        R_flat[idx] = R_case_ts[t_ind, s_ind];
-        idx += 1;
-      }
-    }
-    R_flat ~ neg_binomial_2(mu_flat, phi_c);
-  }
-  
-  // ----- Yearly age composition (Multinomial) -----
-  for (y_ind in 1:Y) {
-    for (s_ind in 1:S) {
-      array[A] int R_case_age;
-      int N_case_ys = 0;
-      
-      for (a_ind in 1:A) {
-        R_case_age[a_ind] = R_case_yas[y_ind, a_ind, s_ind];
-        N_case_ys += R_case_age[a_ind];
-      }
-      
-      if (N_case_ys > 0) {
-        R_case_age ~ multinomial(q_case_ys[y_ind, s_ind]);
-      }
-    }
-  }
+
+    // Hyperparameters
+    sigma_lambda_s ~ exponential(1);          // Prior for standard deviation of province-specific random effect on baseline log force of infection
+    sigma_lambda_y ~ exponential(1);          // Prior for standard deviation of year-specific random effect on baseline log force of infection
+
+    // Testing intensity priors
+    alpha_test ~ normal(-2.94, 1);            // centers f around ~0.05 before other effects
+    beta_test ~ normal(0, 1);
+    tau_test_base ~ lognormal(log(0.01), 0.5); // small baseline tested fraction
+    sigma_test_s ~ exponential(1);
+    sigma_test_y ~ exponential(1);
+    epsilon_test_s ~ normal(0, sigma_test_s);
+    epsilon_test_y ~ normal(0, sigma_test_y);
+
+
+    // === Likelihood  === // 
+    for(t_ind in 1:T)
+      for(s_ind in 1:S)
+      R_case_ts[t_ind, s_ind] ~ neg_binomial_2(C_ts[t_ind, s_ind] + 1e-9, phi_case);      // Reported cases likelihood (ensure strictly positive mean)
 }
