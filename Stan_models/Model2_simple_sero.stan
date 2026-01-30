@@ -44,15 +44,14 @@ parameters{
 
   // Baseline force of infection parameters
   real log_lambda_0;                      // overall baseline log force of infection
-  array[S] real epsilon_lambda_ys_init;   // initial year effect for each province (year 1)
-  array[Y-1, S] real epsilon_lambda_ys_innov; // year-to-year innovations for each province (random walk)
+  array[S] real epsilon_lambda_s;         // site-level effect (constant across years)
 
   // Seasonal variation parameters
   array[H, S] real a_cos;   // Fourier cosine coefficients for seasonal variation for harmonic h, province s
   array[H, S] real a_sin;   // Fourier sine coefficients for seasonal variation for harmonic h, province s
 
   // === Hyperparameters === //
-  real<lower=0> sigma_lambda_y;          // standard deviation of year-to-year innovations (random walk)
+  real<lower=0> sigma_lambda_s;          // standard deviation of site-level effects
   real<lower=0> sigma_Se;                // standard deviation of sensitivity innovations (random walk)
 
 }
@@ -62,12 +61,12 @@ transformed parameters {
   array[T, S] real<lower=0> C_ts;        // C_t,s expected observed cases at time t, province s
   array[T, S] real<lower=0> I_ts;        // I_t,s true incident cases at time t, province s
   array[T, S] real lambda_ts;   // force of infection at time t, province s
-  array[Y, S] real lambda_base_ys;   // baseline log force of infection at year y, province s
+  array[S] real lambda_base_s;   // baseline force of infection at site s (constant across years)
   array[Y, M, S] real<lower=0> kappa_seasonal_yms;   // seasonal variation component of log force of infection at year y, province s, month m
   
   array[Y] real<lower=0, upper=1> Sp_y;        // Test specificity for year y
   array[Y] real<lower=0, upper=1> Se_y;        // Test sensitivity for year y (random walk)
-  array[Y, S] real epsilon_lambda_ys;          // province-specific year effects (random walk)
+  // removed province-specific year effects; lambda varies only seasonally
 
   for(i in 1:Y) Sp_y[i] = 1; // initialize specificity
 
@@ -87,18 +86,9 @@ transformed parameters {
     }
   }
   
-  // Build province-specific random walks
-  for (s_ind in 1:S) {
-    epsilon_lambda_ys[1, s_ind] = epsilon_lambda_ys_init[s_ind];
-    for (y in 2:Y) {
-      epsilon_lambda_ys[y, s_ind] = epsilon_lambda_ys[y-1, s_ind] + epsilon_lambda_ys_innov[y-1, s_ind];
-    }
-  }
-
-  // === Baseline force of infection calculation === //
-  for(y_ind in 1:Y)
-    for(s_ind in 1:S)
-      lambda_base_ys[y_ind, s_ind] = exp(log_lambda_0 + epsilon_lambda_ys[y_ind, s_ind]);     // Baseline log force of infection at year y, province s 
+  // === Baseline force of infection calculation (site-constant across years) === //
+  for(s_ind in 1:S)
+    lambda_base_s[s_ind] = exp(log_lambda_0 + epsilon_lambda_s[s_ind]);
 
   // === Seasonal variation calculation with Fourier with H harmonics === //
   for(y_ind in 1:Y){
@@ -124,7 +114,7 @@ transformed parameters {
   // == Force of infection calculation === //
   for(t_ind in 1:T)
     for(s_ind in 1:S)
-      lambda_ts[t_ind, s_ind] =  lambda_base_ys[year_id[t_ind] , s_ind] *       // Baseline log force of infection
+      lambda_ts[t_ind, s_ind] =  lambda_base_s[s_ind] *       // Baseline force of infection (constant across years)
                                  kappa_seasonal_yms[year_id[t_ind],  month_id[t_ind], s_ind];     // Seasonal variation component of log force of infection
 
   // === True incident cases calculation === //
@@ -140,11 +130,9 @@ transformed parameters {
 
   // === Seroprevalence calculation === //
   for(s_ind in 1:S){
-    real accum_lambda = 0;
-    for(y_sero_ind in 1:Y_sero){
-      accum_lambda += 12*lambda_base_ys[sero_year_id[y_sero_ind], s_ind]; // sum baseline force of infection over serology years
-    }
-    lambda_star_s[s_ind] = accum_lambda / Y_sero; // average baseline force of infection over serology years
+    //real accum_lambda = 0;
+    //accum_lambda = 12 * Y_sero * lambda_base_s[s_ind]; // sum baseline over serology years (constant across years)
+    lambda_star_s[s_ind] = 12 * lambda_base_s[s_ind]; // average baseline force of infection (equals 12 * lambda_base_s)
     p_sero_s[s_ind] = lambda_star_s[s_ind] / (lambda_star_s[s_ind] + omega); // seroprevalence calculation for province s with immune waning rate omega
   }
 }
@@ -155,10 +143,7 @@ model {
     phi_case ~ normal(6, 1);               // Prior for dispersion parameter for reported cases) 
     // Baseline force of infection parameters
     log_lambda_0 ~ normal(-15, 2);               // Prior for overall baseline log force of infection
-    epsilon_lambda_ys_init ~ normal(0, sigma_lambda_y);   // Prior for initial year effects (each province)
-    for (y in 1:(Y-1)) {
-      epsilon_lambda_ys_innov[y] ~ normal(0, sigma_lambda_y);  // Prior for year-to-year innovations (each province)
-    }
+    epsilon_lambda_s ~ normal(0, sigma_lambda_s);   // Prior for site-level effects (each province)
 
     // Seasonal variation parameters
     for(h in 1:H){
@@ -172,7 +157,7 @@ model {
     sigma_Se ~ exponential(1);                       // Prior for sensitivity innovation SD (allows flexibility for shocks)}
 
     // Hyperparameters
-    sigma_lambda_y ~ normal(0.1, 0.05); // Prior for standard deviation of year-to-year innovations (constrained for gradual changes)
+    sigma_lambda_s ~ normal(0.1, 0.05); // Prior for standard deviation of site-level effects
 
     // === Likelihood  for reported cases === //
     for(t_ind in 1:T)

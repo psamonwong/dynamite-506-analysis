@@ -32,11 +32,11 @@ fit <- rstan::sampling(object = mod, data = stan_data, iter = iter, warmup = war
                                                              "Sp_y",
                                                              "C_ts",
                                                              "log_lambda_0",
-                                                             "epsilon_lambda_ys",
-                                                             "lambda_base_ys",
+                                                             "epsilon_lambda_s",
+                                                             "lambda_base_s",
                                                              "a_cos",
                                                              "a_sin",
-                                                             "sigma_lambda_y",
+                                                             "sigma_lambda_s",
                                                              "sigma_Se"
                                                         ),
                                                         include = TRUE)
