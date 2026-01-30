@@ -153,7 +153,7 @@ N_tas <- N_ay[year_id, , , drop = FALSE]   # dims: [T, A, S]
 # Susceptibility
 S_tas <- array(1.0, dim = c(T, A, S))
 
-H <- 2
+H <- 3
 cos_hm <- outer(1:H, 1:M, function(h, m) cos(2 * pi * m / M * h))  # [H, M]
 sin_hm <- outer(1:H, 1:M, function(h, m) sin(2 * pi * m / M * h))  # [H, M]
 
@@ -181,7 +181,7 @@ stan_data <- list(
 )
 
 
-save(stan_data, calendar, site_levels, region_levels, year_levels,
+save(stan_data,
      file = here("Rout", "stan_data_01.RData"))
 
 

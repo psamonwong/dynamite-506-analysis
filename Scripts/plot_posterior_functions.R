@@ -2,52 +2,57 @@ library(here)
 library(tidyverse)
 library(rstan)
 
-load(here("Rout", "fit_02.RData"))  # loads 'fit', 'stan_data', 'site_levels', 'calendar'
-load(here("Rout", "stan_data_01.RData"))  # loads 'stan_data', 'calendar', 'site_levels', etc.
+load(here("Rout", "fit_01.RData"))  # loads 'fit', 'stan_data', 'site_levels'
 
 s_idx <- 1  # Example province index for testing
 S <- stan_data$S
 T <- stan_data$T
-Y <- stan_data$Y
 
 
 ppc_cases_by_province <- function(s_idx) {
   stopifnot(exists("fit"), exists("calendar"), exists("S"), exists("T"), exists("site_levels"))
   if (!(s_idx %in% seq_len(S))) stop("s_idx out of range 1..S")
 
-  # Extract draws from Model2_simple: C_ts (expected observed cases)
-  C_mat <- as.matrix(fit, pars = "C_ts")
-  phi_vec <- as.numeric(as.matrix(fit, pars = "phi_case"))
-  if (is.null(colnames(C_mat))) stop("C_ts columns have no names; re-run sampling with pars='C_ts'.")
+  # Extract draws
+  mu_mat <- as.matrix(fit, pars = "mu_case_ts")
+  phi_vec <- as.numeric(as.matrix(fit, pars = "phi_c"))
+  if (is.null(colnames(mu_mat))) stop("mu_case_ts columns have no names; re-run sampling with pars='mu_case_ts'.")
 
-  # Parse indices from column names [t,s]
-  idx <- stringr::str_match(colnames(C_mat), "C_ts\\[(\\d+),(\\d+)\\]")
-  if (any(is.na(idx))) stop("Failed to parse C_ts indices from column names.")
-  t_idx_col <- as.integer(idx[, 2])
-  s_idx_col <- as.integer(idx[, 3])
+  # Parse indices from column names, handle either [t,s] or [s,t]
+  idx <- stringr::str_match(colnames(mu_mat), "mu_case_ts\\[(\\d+),(\\d+)\\]")
+  if (any(is.na(idx))) stop("Failed to parse mu_case_ts indices from column names.")
+  i1 <- as.integer(idx[, 2]); i2 <- as.integer(idx[, 3])
 
-  param_map <- tibble::tibble(par = colnames(C_mat), t_idx = t_idx_col, s = s_idx_col) |>
+  if (max(i1, na.rm = TRUE) == T && max(i2, na.rm = TRUE) == S) {
+    t_idx_col <- i1; s_idx_col <- i2
+  } else if (max(i1, na.rm = TRUE) == S && max(i2, na.rm = TRUE) == T) {
+    s_idx_col <- i1; t_idx_col <- i2
+  } else {
+    stop("mu_case_ts index sizes do not match expected T and S.")
+  }
+
+  param_map <- tibble::tibble(par = colnames(mu_mat), t_idx = t_idx_col, s = s_idx_col) |>
     dplyr::filter(s == s_idx)
 
-  C_long <- tibble::as_tibble(C_mat[, param_map$par, drop = FALSE]) |>
+  mu_long <- tibble::as_tibble(mu_mat[, param_map$par, drop = FALSE]) |>
     dplyr::mutate(.draw = dplyr::row_number()) |>
-    tidyr::pivot_longer(cols = - .draw, names_to = "par", values_to = "C_expected") |>
+    tidyr::pivot_longer(cols = - .draw, names_to = "par", values_to = "mu") |>
     dplyr::left_join(param_map, by = "par")
 
-  phi_df <- tibble::tibble(.draw = seq_len(nrow(C_mat)), phi = phi_vec)
+  phi_df <- tibble::tibble(.draw = seq_len(nrow(mu_mat)), phi = phi_vec)
 
   # Summarize PPC for this province over time
-  pred_summ <- C_long |>
+  pred_summ <- mu_long |>
     dplyr::left_join(phi_df, by = ".draw") |>
     dplyr::group_by(t_idx) |>
     dplyr::summarize(
-      mu_mean   = mean(C_expected),
-      mu_median = median(C_expected),
-      mu_q025   = stats::quantile(C_expected, 0.025, names = FALSE),
-      mu_q975   = stats::quantile(C_expected, 0.975, names = FALSE),
-      yrep_q025 = stats::quantile(stats::rnbinom(n = dplyr::n(), size = phi, mu = C_expected), 0.025, names = FALSE),
-      yrep_q500 = stats::quantile(stats::rnbinom(n = dplyr::n(), size = phi, mu = C_expected), 0.50, names = FALSE),
-      yrep_q975 = stats::quantile(stats::rnbinom(n = dplyr::n(), size = phi, mu = C_expected), 0.975, names = FALSE),
+      mu_mean   = mean(mu),
+      mu_median = median(mu),
+      mu_q025   = stats::quantile(mu, 0.025, names = FALSE),
+      mu_q975   = stats::quantile(mu, 0.975, names = FALSE),
+      yrep_q025 = stats::quantile(stats::rnbinom(n = dplyr::n(), size = phi, mu = mu), 0.025, names = FALSE),
+      yrep_q500 = stats::quantile(stats::rnbinom(n = dplyr::n(), size = phi, mu = mu), 0.50, names = FALSE),
+      yrep_q975 = stats::quantile(stats::rnbinom(n = dplyr::n(), size = phi, mu = mu), 0.975, names = FALSE),
       .groups = "drop"
     )
 
@@ -135,100 +140,57 @@ ggplot(plot_data, aes(x = date)) +
 
 
 # ------------------------------------------------------------------------------
-# Extract and summarize baseline FOI (lambda_base_ys) over years and provinces
-# Returns posterior summaries with year and province labels
-extract_lambda_base <- function(probs = c(0.025, 0.5, 0.975)) {
-  stopifnot(exists("fit"), exists("stan_data"), exists("site_levels"))
-  S <- stan_data$S
-  Y <- stan_data$Y
-  
-  # Extract lambda_base_ys draws [Y, S]
-  lambda_mat <- as.matrix(fit, pars = "lambda_base_ys")
-  if (is.null(colnames(lambda_mat))) stop("lambda_base_ys columns have no names; re-run sampling with pars='lambda_base_ys'.")
-  
-  # Parse indices from column names [y,s]
-  idx <- stringr::str_match(colnames(lambda_mat), "lambda_base_ys\\[(\\d+),(\\d+)\\]")
-  if (any(is.na(idx))) stop("Failed to parse lambda_base_ys indices from column names.")
-  y_idx_col <- as.integer(idx[, 2])
-  s_idx_col <- as.integer(idx[, 3])
-  
-  # Create parameter map
-  param_map <- tibble::tibble(
-    par = colnames(lambda_mat), 
-    y_idx = y_idx_col, 
-    s_idx = s_idx_col
-  )
-  
-  # Convert to long format
-  lambda_long <- tibble::as_tibble(lambda_mat) |>
-    dplyr::mutate(.draw = dplyr::row_number()) |>
-    tidyr::pivot_longer(cols = -.draw, names_to = "par", values_to = "lambda_base") |>
-    dplyr::left_join(param_map, by = "par")
-  
-  # Summarize by year and province
-  lambda_summ <- lambda_long |>
-    dplyr::group_by(y_idx, s_idx) |>
-    dplyr::summarize(
-      mean = mean(lambda_base),
-      q025 = stats::quantile(lambda_base, probs[1], names = FALSE),
-      q500 = stats::quantile(lambda_base, probs[2], names = FALSE),
-      q975 = stats::quantile(lambda_base, probs[3], names = FALSE),
-      .groups = "drop"
-    ) |>
-    dplyr::mutate(
-      province = site_levels[s_idx],
-      year = min(calendar$year) + y_idx - 1  # Map y_idx to actual year
-    )
-  
-  lambda_summ
-}
-
-# Plot baseline FOI over time with all provinces overlaid
-plot_lambda_base_overlay <- function(lambda_data = NULL) {
-  if (is.null(lambda_data)) {
-    lambda_data <- extract_lambda_base()
-  }
-  
-  ggplot(lambda_data, aes(x = year, color = province, fill = province)) +
-    geom_ribbon(aes(ymin = q025, ymax = q975), alpha = 0.15, color = NA) +
-    geom_line(aes(y = mean), linewidth = 1) +
-    labs(
-      x = "Year", 
-      y = "Baseline FOI (λ)",
-      title = "Baseline Force of Infection Over Time",
-      subtitle = "All provinces overlaid with 95% credible intervals",
-      color = "Province",
-      fill = "Province"
-    ) +
-    theme_bw(base_size = 14) +
-    theme(legend.position = "right")
-}
-
-plot_lambda_base_overlay()
-
-# ------------------------------------------------------------------------------
-# Monthly totals of true incident cases (I_ts[t,s])
-# In Model2_simple, I_ts is directly available in transformed parameters.
+# Monthly totals of expected new clinical infections (I_total[t,s])
+# Derived from saved draws without needing age-specific parameters.
+# Uses identity: mu_case_ts[t,s] = I_total[t,s] * Se[t,s] + FP_total[t,s]
+# where Se[t,s] = logistic(alpha_Se_yr[y(t), r(s)] + delta_Se_s[s]) and
+# FP_total[t,s] = sum_a exp(log(N_tas[t,a,s] + 1e-9) + alpha_FP_yr[y(t), r(s)] + delta_FP_s[s])
 # Returns posterior summaries by month, optionally joined to calendar.
 derive_I_clinical_totals <- function(s_idx, probs = c(0.025, 0.5, 0.975)) {
   stopifnot(exists("fit"), exists("stan_data"))
-  S <- stan_data$S; T <- stan_data$T
+  S <- stan_data$S; T <- stan_data$T; Y <- stan_data$Y; R <- stan_data$R; A <- stan_data$A
   if (!(s_idx %in% seq_len(S))) stop("s_idx out of range 1..S")
 
-  # Extract I_ts draws from Model2_simple
-  I_mat <- as.matrix(fit, pars = "I_ts")
-  if (is.null(colnames(I_mat))) stop("I_ts columns have no names; re-run sampling with pars='I_ts'.")
+  y_of_t <- as.integer(stan_data$year_id)   # length T, values 1..Y
+  r_of_s <- as.integer(stan_data$region_id)[s_idx] # single region index for s_idx
+  N_tas  <- stan_data$N_tas                 # [T, A, S]
 
-  # Parse indices from column names [t,s]
-  idx <- stringr::str_match(colnames(I_mat), "I_ts\\[(\\d+),(\\d+)\\]")
-  if (any(is.na(idx))) stop("Failed to parse I_ts indices from column names.")
-  t_idx_col <- as.integer(idx[, 2])
-  s_idx_col <- as.integer(idx[, 3])
+  dr <- rstan::extract(
+    fit,
+    pars = c("mu_case_ts", "alpha_Se_yr", "delta_Se_s", "alpha_FP_yr", "delta_FP_s"),
+    permuted = TRUE
+  )
 
-  # Filter for this province
-  cols_for_s <- which(s_idx_col == s_idx)
-  I_draws <- I_mat[, cols_for_s, drop = FALSE]
-  t_indices <- t_idx_col[cols_for_s]
+  # Shapes:
+  # mu_case_ts: [draw, T, S]
+  # alpha_Se_yr: [draw, Y, R]
+  # delta_Se_s: [draw, S]
+  # alpha_FP_yr: [draw, Y, R]
+  # delta_FP_s: [draw, S]
+  mu_ts   <- dr$mu_case_ts[, , s_idx, drop = FALSE][, , 1]
+  se_y_r  <- dr$alpha_Se_yr
+  dse_s   <- dr$delta_Se_s[, s_idx]
+  afp_y_r <- dr$alpha_FP_yr
+  dfp_s   <- dr$delta_FP_s[, s_idx]
+
+  n_draws <- nrow(mu_ts)
+  Se_draws <- matrix(NA_real_, nrow = n_draws, ncol = T)
+  FP_draws <- matrix(0.0, nrow = n_draws, ncol = T)
+
+  # Precompute population sums over age per month for this province
+  N_sum_t <- vapply(seq_len(T), function(t) sum(N_tas[t, , s_idx] + 1e-9), numeric(1))
+
+  for (t in seq_len(T)) {
+    y <- y_of_t[t]
+    r <- r_of_s
+    # Se[t,s] shared across ages
+    Se_draws[, t] <- plogis(se_y_r[, y, r] + dse_s)
+    # FP_total[t,s] = exp(alpha_FP[y,r] + delta_FP[s]) * sum_a (N_tas[t,a,s] + 1e-9)
+    FP_draws[, t] <- exp(afp_y_r[, y, r] + dfp_s) * N_sum_t[t]
+  }
+
+  # I_total draws; clamp negatives to 0 for numerical safety
+  I_tot <- pmax((mu_ts - FP_draws) / Se_draws, 0)
 
   summarize_t <- function(v) {
     qs <- stats::quantile(v, probs = probs, names = FALSE, type = 7)
@@ -236,9 +198,7 @@ derive_I_clinical_totals <- function(s_idx, probs = c(0.025, 0.5, 0.975)) {
   }
 
   out <- purrr::map_dfr(seq_len(T), function(t) {
-    col_idx <- which(t_indices == t)
-    if (length(col_idx) == 0) return(NULL)
-    summarize_t(I_draws[, col_idx]) |> dplyr::mutate(t_idx = t, .before = 1)
+    summarize_t(I_tot[, t]) |> dplyr::mutate(t_idx = t, .before = 1)
   }) |> dplyr::mutate(s = s_idx)
 
   # Attach calendar if available
