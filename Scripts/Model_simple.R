@@ -6,6 +6,34 @@ mod <- stan_model(here("Stan_models", "Model2_simple_sero.stan"), verbose = FALS
 
 system(paste('Rscript --vanilla Scripts/run_cmd_simple.R'))
 
+load(here("Rout", "fit_02.RData"))
+
+rstan::traceplot(fit, par = "phi_case")
+rstan::traceplot(fit, par = "Se_t[1]")
+rstan::traceplot(fit, par = "Sp_t[1]")
+rstan::traceplot(fit, par = "log_lambda_0")
+rstan::traceplot(fit, par = "sigma_lambda_s")
+rstan::traceplot(fit, par = "sigma_lambda_y")
+rstan::traceplot(fit, par = "a_cos[1,1]")
+rstan::traceplot(fit, par = "a_cos[3,1]")
+rstan::traceplot(fit, par = "a_sin[3,1]")
+
+
+###################################################################################################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 library(here)
 library(tidyverse)
