@@ -28,8 +28,8 @@ fit <- rstan::sampling(object = mod, data = stan_data, iter = iter, warmup = war
                                                         control = list(adapt_delta = 0.95, max_treedepth = 12),
                                                         pars = c(
                                                              "phi_case",
-                                                             "Se_y",
-                                                             "Sp_y",
+                                                             "Se_t",
+                                                             "Sp_t",
                                                            #  "C_ts",
                                                              "I_ts",
                                                              "log_lambda_0",
