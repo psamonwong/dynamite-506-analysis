@@ -1,10 +1,8 @@
-library(here)
-library(tidyverse)
-library(rstan)
 load(here("Rout", "stan_data_01.RData"))
 
 stan_data$S_t <- 1
 stan_data$N_tas <- stan_data$N_tas  %>% apply(c(1,3), sum)
+mod <- stan_model(here("Stan_models", "Model2_simple_sero.stan"), verbose = FALSE)
 
 system(paste('Rscript --vanilla Scripts/run_cmd_simple.R'))
 
@@ -37,11 +35,15 @@ rstan::traceplot(fit, par = "a_sin[3,1]")
 
 
 
-mod <- stan_model(here("Stan_models", "Model2_simple.stan"), verbose = FALSE)
+library(here)
+library(tidyverse)
+library(rstan)
+load(here("Rout", "fit_02.RData"))
 
+rstan::traceplot(fit, pars = c("phi_case", "Se_y[4]", "Sp_y[1]", "Se_y[2]", "Sp_y[2]", 
+                              "log_lambda_0", "sigma_lambda_y", "sigma_Se"))
 
-
-
+xx
 
 
 

@@ -13,6 +13,7 @@ options(mc.cores = parallel::detectCores())
 case_data <- read_csv(here("Analysis_data", "Scrub_typhus", "analysis_data.csv"))
 case_age_data <- read_csv(here("Analysis_data", "Scrub_typhus", "case_death_by_age.csv"))
 population_data <- read_csv(here("Analysis_data", "Population", "population_data_summarised.csv"))
+sero_data <- read_csv(here("Analysis_data", "Gonwong_sero_data.csv"))
 
 # Setup
 area <- #case_data %>% distinct(Area) %>% pull(Area)
@@ -157,6 +158,12 @@ H <- 3
 cos_hm <- outer(1:H, 1:M, function(h, m) cos(2 * pi * m / M * h))  # [H, M]
 sin_hm <- outer(1:H, 1:M, function(h, m) sin(2 * pi * m / M * h))  # [H, M]
 
+# Sero data processing (not used in model but saved for reference)
+sero_data_area <- sero_data %>% 
+  filter(Province %in% area) %>%
+  arrange(Province)
+
+omega <- 1/2  # assumed immune waning rate
 
 # Prepare data for Stan
 stan_data <- list(
@@ -177,7 +184,12 @@ stan_data <- list(
   month_id = month_id,
   period_id = period_id,
   region_id = region_id,
-  H = H, cos_hm = cos_hm, sin_hm = sin_hm
+  H = H, cos_hm = cos_hm, sin_hm = sin_hm,
+  sero_lower_s = sero_data_area$sero_lower,
+  sero_upper_s = sero_data_area$sero_upper,
+  omega = omega,
+  Y_sero = nrow(sero_data_area),
+  sero_year_id = match(c(2007, 2008, 2012), year_levels)
 )
 
 
