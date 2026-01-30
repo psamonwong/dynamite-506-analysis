@@ -27,8 +27,10 @@ data {
 parameters{
   // === Dispersion parameters === //
   real<lower=0> phi_case;               // Dispersion parameter for reported cases
+  
   // === Test sensitivity and specificity parameters (yearly constants) === //
-  array[Y] real<lower=0, upper=1> Se_y;        // Test sensitivity for year y
+  real logit_Se_init;                   // Initial sensitivity (year 1) on logit scale
+  array[Y-1] real logit_Se_innov;       // Year-to-year innovations for sensitivity (random walk)
 
   // === Force of infection parameters === //
 
@@ -43,6 +45,7 @@ parameters{
 
   // === Hyperparameters === //
   real<lower=0> sigma_lambda_y;          // standard deviation of year-to-year innovations (random walk)
+  real<lower=0> sigma_Se;                // standard deviation of sensitivity innovations (random walk)
 
 }
 
@@ -55,9 +58,22 @@ transformed parameters {
   array[Y, M, S] real<lower=0> kappa_seasonal_yms;   // seasonal variation component of log force of infection at year y, province s, month m
   
   array[Y] real<lower=0, upper=1> Sp_y;        // Test specificity for year y
+  array[Y] real<lower=0, upper=1> Se_y;        // Test sensitivity for year y (random walk)
   array[Y, S] real epsilon_lambda_ys;          // province-specific year effects (random walk)
 
   for(i in 1:Y) Sp_y[i] = 1; // initialize specificity
+  
+  // Build sensitivity random walk on logit scale
+  {
+    array[Y] real logit_Se_y;
+    logit_Se_y[1] = logit_Se_init;
+    for (y in 2:Y) {
+      logit_Se_y[y] = logit_Se_y[y-1] + logit_Se_innov[y-1];
+    }
+    for (y in 1:Y) {
+      Se_y[y] = inv_logit(logit_Se_y[y]);
+    }
+  }
   
   // Build province-specific random walks
   for (s_ind in 1:S) {
@@ -130,13 +146,12 @@ model {
     }
 
     // Sensitivity and Specificity parameters (yearly)
-    for(y_ind in 1:Y){
-      Se_y[y_ind] ~ beta(8, 2);        // Prior for test sensitivity at year y (mean 0.8)
-      // Sp_y[y_ind] ~ beta(9, 1);        // Prior for test specificity at year y (mean 0.9)
-    }
+    logit_Se_init ~ normal(logit(0.8), 0.25);           // Prior for initial sensitivity (centered at 0.8)
+    logit_Se_innov ~ normal(0, sigma_Se);            // Prior for year-to-year innovations (allows gradual changes and shocks)
+    sigma_Se ~ exponential(1);                       // Prior for sensitivity innovation SD (allows flexibility for shocks)}
 
     // Hyperparameters
-    sigma_lambda_y ~ exponential(1);          // Prior for standard deviation of year-to-year innovations
+    sigma_lambda_y ~ exponential(10);          // Prior for standard deviation of year-to-year innovations (constrained for gradual changes)
 
     // === Likelihood  === // 
     for(t_ind in 1:T)

@@ -21,7 +21,7 @@ chains <- getOption("stan.chains", 4)
 thin <- getOption("stan.thin", 1)
 seed <- getOption("stan.seed", 124L)
 message(sprintf("Sampling: iter=%d warmup=%d chains=%d thin=%d", iter, warmup, chains, thin))
-mod <- stan_model(here("Stan_models", "Model2_simple.stan"), verbose = F)
+mod <- stan_model(here("Stan_models", "Model2_simple_sero.stan"), verbose = F)
 fit <- rstan::sampling(object = mod, data = stan_data, iter = iter, warmup = warmup, cores = 4,
                        chains = chains, thin = thin, seed = seed, 
                        refresh = max(1, iter * 0.05),  # print progress every 5%
@@ -36,7 +36,8 @@ fit <- rstan::sampling(object = mod, data = stan_data, iter = iter, warmup = war
                                                              "lambda_base_ys",
                                                              "a_cos",
                                                              "a_sin",
-                                                             "sigma_lambda_y"
+                                                             "sigma_lambda_y",
+                                                             "sigma_Se"
                                                         ),
                                                         include = TRUE)
 # SAVE OUTPUT
