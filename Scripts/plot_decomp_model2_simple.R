@@ -1,31 +1,46 @@
 # Decompose reported totals into Se*I (true reported), (1-Se)*I (missed), and FP per province-year
+# Reconstructs I_ts from C_ts using: I = (C - FP) / Se, where FP = (1-Sp)*N
 summarize_province_report_decomposition_model2 <- function(probs = c(0.025, 0.5, 0.975)) {
   stopifnot(exists("fit"), exists("stan_data"))
   T <- stan_data$T; Y <- stan_data$Y; S <- stan_data$S
   year_id  <- as.integer(stan_data$year_id)    # [T]
-  N_tas    <- stan_data$N_tas                  # [T, S]
+  N_tas    <- stan_data$N_tas  %>% apply(c(1,3), sum)
 
-  # Use direct decomposition from sampled expectations: true = Se_y * I_ts; FP = C_ts - true
-  # Prefer using harvested C_ts to avoid assumptions about FP generation
-  dr <- rstan::extract(fit, pars = c("I_ts", "Se_y", "C_ts"), permuted = TRUE)
+  # Extract C_ts (expected observed cases), Se_y, Sp_y
+  dr <- rstan::extract(fit, pars = c("C_ts", "Se_y", "Sp_y"), permuted = TRUE)
 
   # Draw arrays
-  I_draw   <- dr$I_ts     # [draw, T, S]
-  Se_draw  <- dr$Se_y     # [draw, Y]
   C_draw   <- dr$C_ts     # [draw, T, S]
-  n_draws  <- dim(I_draw)[1]
+  Se_draw  <- dr$Se_y     # [draw, Y]
+  Sp_draw  <- dr$Sp_y     # [draw, Y]
+  n_draws  <- dim(C_draw)[1]
 
-  # True reported per month-province: Se_y[year] * I_ts
-  true_rep_month <- array(0.0, dim = c(n_draws, T, S))
+  # Reconstruct I_ts from C_ts: C = I*Se + (1-Sp)*N => I = (C - (1-Sp)*N) / Se
+  I_draw <- array(0.0, dim = c(n_draws, T, S))
   for (i in seq_len(n_draws)) {
     for (t in seq_len(T)) {
       y <- year_id[t]
-      true_rep_month[i, t, ] <- I_draw[i, t, ] * Se_draw[i, y]
+      for (s in seq_len(S)) {
+        FP_ts <- (1 - Sp_draw[i, y]) * N_tas[t, s]
+        I_draw[i, t, s] <- pmax((C_draw[i, t, s] - FP_ts) / (Se_draw[i, y] + 1e-9), 0)
+      }
     }
   }
 
-  # FP per month-province from identity: FP = C - true
-  FP_draw <- C_draw - true_rep_month
+  # True reported per month-province: Se_y[year] * I_ts
+  true_rep_month <- array(0.0, dim = c(n_draws, T, S))
+  FP_draw <- array(0.0, dim = c(n_draws, T, S))
+  
+  for (i in seq_len(n_draws)) {
+    for (t in seq_len(T)) {
+      y <- year_id[t]
+      for (s in seq_len(S)) {
+        true_rep_month[i, t, s] <- I_draw[i, t, s] * Se_draw[i, y]
+        # FP per month-province: (1 - Sp_y) * N
+        FP_draw[i, t, s] <- (1 - Sp_draw[i, y]) * N_tas[t, s]
+      }
+    }
+  }
 
   # Missed per month-province: (1 - Se_y[year]) * I_ts = ((1-Se)/Se) * true_rep
   missed_month <- array(0.0, dim = c(n_draws, T, S))
@@ -33,7 +48,9 @@ summarize_province_report_decomposition_model2 <- function(probs = c(0.025, 0.5,
     for (t in seq_len(T)) {
       y <- year_id[t]
       ratio <- (1 - Se_draw[i, y]) / (Se_draw[i, y] + 1e-9)
-      missed_month[i, t, ] <- pmax(ratio, 0) * true_rep_month[i, t, ]
+      for (s in seq_len(S)) {
+        missed_month[i, t, s] <- pmax(ratio, 0) * true_rep_month[i, t, s]
+      }
     }
   }
 
@@ -115,7 +132,7 @@ decomp2 <- summarize_province_report_decomposition_model2()
 G2 <- plot_province_report_decomposition_model2(decomp2)
 G2 + facet_wrap(province ~ ., scales = "free_y")
 
-png(here("Figures", "province_report_decomposition_model2_simple.png"),
-    width = 12, height = 8, units = "in", res = 300)
-G2 + facet_wrap(province ~ ., scales = "free_y")
-dev.off()
+# png(here("Figures", "province_report_decomposition_model2_simple.png"),
+#     width = 12, height = 8, units = "in", res = 300)
+# G2 + facet_wrap(province ~ ., scales = "free_y")
+# dev.off()
