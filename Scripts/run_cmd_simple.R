@@ -21,7 +21,7 @@ chains <- getOption("stan.chains", 4)
 thin <- getOption("stan.thin", 1)
 seed <- getOption("stan.seed", 124L)
 message(sprintf("Sampling: iter=%d warmup=%d chains=%d thin=%d", iter, warmup, chains, thin))
-mod <- stan_model(here("Stan_models", "Model2_simple_sero.stan"), verbose = F)
+mod <- stan_model(here("Stan_models", "Model2_simple_sero_low_se.stan"), verbose = F)
 fit <- rstan::sampling(object = mod, data = stan_data, iter = iter, warmup = warmup, cores = 4,
                        chains = chains, thin = thin, seed = seed, 
                        refresh = max(1, iter * 0.05),  # print progress every 5%
@@ -32,17 +32,18 @@ fit <- rstan::sampling(object = mod, data = stan_data, iter = iter, warmup = war
                                                              "Sp_y",
                                                              "C_ts",
                                                              "log_lambda_0",
-                                                             "epsilon_lambda_s",
-                                                             "lambda_base_s",
+                                                             "epsilon_lambda_ys",
+                                                             "lambda_base_ys",
                                                              "a_cos",
                                                              "a_sin",
-                                                             "sigma_lambda_s",
-                                                             "sigma_Se"
+                                                             "sigma_lambda_y",
+                                                             "sigma_Se",
+                                                             'p_sero_s'
                                                         ),
                                                         include = TRUE)
 # SAVE OUTPUT
 save(fit, stan_data,
-     file = here("Rout", "fit_02.RData"))
+     file = here("Rout", "fit_02_low_se.RData"))
 ###############################
 message(sprintf("Finished at %s", Sys.time()))
 ## clear workspace

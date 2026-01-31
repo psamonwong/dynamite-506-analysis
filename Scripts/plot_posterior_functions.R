@@ -89,7 +89,6 @@ list_ts_params <- function(fit, T, S, A = NULL) {
     filter(matches_dims) |>
     arrange(arity, name)
 }######################################################################################
-list_ts_params(fit, T = T, S = S)
 
 
 
