@@ -1,61 +1,27 @@
-load(here("Rout", "stan_data_01.RData"))
+# load(here("Rout", "stan_data_01.RData"))
 
-stan_data$S_t <- 1
-stan_data$N_tas <- stan_data$N_tas  %>% apply(c(1,3), sum)
-mod <- stan_model(here("Stan_models", "Model2_simple_sero.stan"), verbose = FALSE)
+# stan_data$S_t <- 1
+# stan_data$N_tas <- stan_data$N_tas  %>% apply(c(1,3), sum)
+# mod <- stan_model(here("Stan_models", "Model2_simple_sero.stan"), verbose = FALSE)
 
 system(paste('Rscript --vanilla Scripts/run_cmd_simple.R'))
 
-load(here("Rout", "fit_02.RData"))
-
-rstan::traceplot(fit, par = "phi_case")
-rstan::traceplot(fit, par = "Se_t[1]")
-rstan::traceplot(fit, par = "Sp_t[1]")
-rstan::traceplot(fit, par = "log_lambda_0")
-rstan::traceplot(fit, par = "sigma_lambda_s")
-rstan::traceplot(fit, par = "sigma_lambda_y")
-rstan::traceplot(fit, par = "a_cos[1,1]")
-rstan::traceplot(fit, par = "a_cos[3,1]")
-rstan::traceplot(fit, par = "a_sin[3,1]")
+# load(here("Rout", "fit_02.RData"))
 
 
-###################################################################################################
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<<<<<<< HEAD
 library(here)
 library(tidyverse)
 library(rstan)
-load(here("Rout", "fit_02.RData"))
+load(here("Rout", "fit_03.RData"))
 
-rstan::traceplot(fit, pars = c("phi_case", "Se_y[4]", "Sp_y[1]", "Se_y[2]", "Sp_y[2]", 
-                              "log_lambda_0", "sigma_lambda_y", "sigma_Se"))
+rstan::traceplot(fit, pars = c("phi_case", 'sigma_Se', 
+                              "log_lambda_0", "sigma_lambda_y"))
 
-=======
-mod <- stan_model(here("Stan_models", "Model2_simple.stan"), verbose = FALSE)
-
-load(here("Rout", "fit_02.RData"))
-
-rstan::traceplot(fit, pars = c("phi_case", "Se_y[1]", "Sp_y[1]", "Se_y[2]", "Sp_y[2]",
-                              "log_lambda_0", "sigma_lambda_s", "sigma_lambda_y"))
-
->>>>>>> parent of 7f41c1e (Revert "Merge branch 'main' of https://github.com/psamonwong/dynamite-506-analysis")
-xx
+rstan::traceplot(fit, pars = "Se_y")
+rstan::traceplot(fit, pars = "p_sero_s")
 
 
+ss
 
 
 

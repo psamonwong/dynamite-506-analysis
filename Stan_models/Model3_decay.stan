@@ -6,7 +6,8 @@ data {
     int<lower=1> P;                 // number of period blocks
     int<lower=1> S;                 // number of provinces
     int<lower=1> R;                 // number of regions
-    int<lower=1> Y_sero;            // number of years with serology data
+    int<lower=1> K_sero;            // number of serology measurement years (2007, 2008, and 2012 = 3)
+    
 
   // Mappings
   array[T] int<lower=1, upper=Y> year_id;         // y(t): year corresponding to month t
@@ -27,9 +28,13 @@ data {
   // Serology data
   array[S] real<lower=0, upper=1> sero_lower_s;   // lower bounds of seroprevalence in each province
   array[S] real<lower=0, upper=1> sero_upper_s;   // upper bounds of seroprevalence in each province
-  array[Y_sero] int sero_year_id;               // year indices for serology data
+  array[K_sero] int sero_year_id;               // year indices for serology data
+
   // Immune waning rate
   real<lower=0> omega;               // immune waning rate
+
+  // Clinical fraction
+  real<lower=0, upper=1> nu;        // clinical fraction
 }
 
 parameters{
@@ -54,6 +59,9 @@ parameters{
   // === Hyperparameters === //
   real<lower=0> sigma_lambda_y;          // standard deviation of year-to-year innovations (random walk)
   real<lower=0> sigma_Se;                // standard deviation of sensitivity innovations (random walk)
+
+  // === Immune waning adjustment parameter === //
+ // real log_delta;                        // adjustment parameter for immune waning in seroprevalence
 
 }
 
@@ -130,7 +138,7 @@ transformed parameters {
   // === True incident cases calculation === //
   for(t_ind in 1:T)
     for(s_ind in 1:S)
-      I_ts[t_ind, s_ind] = N_tas[t_ind, s_ind] * S_t * (1 - exp(-lambda_ts[t_ind, s_ind]));      // True incident cases at time t, province s
+      I_ts[t_ind, s_ind] = nu * N_tas[t_ind, s_ind] * S_t * (1 - exp(-lambda_ts[t_ind, s_ind]));      // True incident cases at time t, province s
 
   // === Observed cases calculation === //
   for(t_ind in 1:T)
@@ -140,12 +148,19 @@ transformed parameters {
 
   // === Seroprevalence calculation === //
   for(s_ind in 1:S){
-    real accum_lambda = 0;
-    for(y_sero_ind in 1:Y_sero){
-      accum_lambda += 12*lambda_base_ys[sero_year_id[y_sero_ind], s_ind]; // sum baseline force of infection over serology years
+    real p_sum = 0;
+    for (k in 1:K_sero) {
+      int y0 = sero_year_id[k];                 // serology measurement year
+      real Hazards = 0;                                // cumulative annual hazard up to y0
+      for (y_ind in 1:y0) {
+        real years_since = y0 - y_ind;
+        real lambda_year = 12 * lambda_base_ys[y_ind, s_ind];   // year^-1
+        Hazards += lambda_year * exp(-omega * years_since);       // waning discount
+      }
+      real p_y = 1 - exp(-Hazards);                    // prevalence for year y0
+      p_sum += p_y;
     }
-    lambda_star_s[s_ind] = accum_lambda / Y_sero; // average baseline force of infection over serology years
-    p_sero_s[s_ind] = lambda_star_s[s_ind] / (lambda_star_s[s_ind] + omega); // seroprevalence calculation for province s with immune waning rate omega
+    p_sero_s[s_ind] = p_sum / K_sero;            // average across 2007–2012
   }
 }
 
@@ -154,7 +169,7 @@ model {
     // Dispersion parameters
     phi_case ~ normal(6, 1);               // Prior for dispersion parameter for reported cases) 
     // Baseline force of infection parameters
-    log_lambda_0 ~ normal(-15, 2);               // Prior for overall baseline log force of infection
+    log_lambda_0 ~ normal(-5, 2);               // Prior for overall baseline log force of infection
     epsilon_lambda_ys_init ~ normal(0, sigma_lambda_y);   // Prior for initial year effects (each province)
     for (y in 1:(Y-1)) {
       epsilon_lambda_ys_innov[y] ~ normal(0, sigma_lambda_y);  // Prior for year-to-year innovations (each province)
@@ -167,12 +182,15 @@ model {
     }
 
     // Sensitivity and Specificity parameters (yearly)
-    logit_Se_init ~ normal(logit(0.2), 0.1);           // Prior for initial sensitivity (centered at 0.8)
+    logit_Se_init ~ normal(logit(0.5), 0.3);           // Prior for initial sensitivity (centered at 0.8)
     logit_Se_innov ~ normal(0, sigma_Se);            // Prior for year-to-year innovations (allows gradual changes and shocks)
     sigma_Se ~ exponential(1);                       // Prior for sensitivity innovation SD (allows flexibility for shocks)}
 
     // Hyperparameters
-    sigma_lambda_y ~ normal(0.1, 0.05); // Prior for standard deviation of year-to-year innovations (constrained for gradual changes)
+    sigma_lambda_y ~ normal(0.05, 0.01); // Prior for standard deviation of year-to-year innovations (constrained for gradual changes)
+
+    // Immune waning adjustment parameter
+   // log_delta ~ normal(0, 1); // Prior for immune waning adjustment parameter
 
     // === Likelihood  for reported cases === //
     for(t_ind in 1:T)
@@ -181,7 +199,7 @@ model {
 
     // === Likelihood for seroprevalence data (interval-censored)=== //
     for(s_ind in 1:S){
-      real sigma_sero = 0.05;  // measurement uncertainty
+      real sigma_sero = 0.01;  // measurement uncertainty
       target += log_diff_exp(
         std_normal_lcdf((sero_upper_s[s_ind] - p_sero_s[s_ind]) / sigma_sero),
         std_normal_lcdf((sero_lower_s[s_ind] - p_sero_s[s_ind]) / sigma_sero)

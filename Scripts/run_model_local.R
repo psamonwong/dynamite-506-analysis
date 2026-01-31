@@ -16,8 +16,8 @@ population_data <- read_csv(here("Analysis_data", "Population", "population_data
 sero_data <- read_csv(here("Analysis_data", "Gonwong_sero_data.csv"))
 
 # Setup
-area <- case_data %>% distinct(Area) %>% pull(Area)
-#c( "Chiang Rai", "Lampang",  "Nakhon Ratchasima", "Surin", "Songkhla", "Phatthalung", "Uttaradit", "Tak")
+area <- #case_data %>% distinct(Area) %>% pull(Area)
+c( "Chiang Rai", "Lampang",  "Nakhon Ratchasima", "Surin", "Songkhla", "Phatthalung", "Uttaradit", "Tak")
 period_size <- 5
 n_periods <- 4
 start_year <- 2004
@@ -163,7 +163,8 @@ sero_data_area <- sero_data %>%
   filter(Province %in% area) %>%
   arrange(Province)
 
-omega <- 1/2  # assumed immune waning rate
+omega <- 0.1882 #1/2  # assumed immune waning rate
+nu <- 0.15 # clinical sign probability
 
 # Prepare data for Stan
 stan_data <- list(
@@ -188,13 +189,15 @@ stan_data <- list(
   sero_lower_s = sero_data_area$sero_lower,
   sero_upper_s = sero_data_area$sero_upper,
   omega = omega,
-  Y_sero = Y,
-  sero_year_id = match(year_selected, year_levels)
+  sero_year_id = match(c(2007, 2008, 2012), year_levels),
+  K_sero = length(c(2007, 2008, 2012)),
+  nu = nu
+ # sero_year_id = match(year_selected, year_levels)
 )
 
 
 save(stan_data, calendar, site_levels, region_levels, age_levels, 
-     file = here("Rout", "stan_data_01.RData"))
+     file = here("Rout", "stan_data_03.RData"))
 
 
 #####################################
