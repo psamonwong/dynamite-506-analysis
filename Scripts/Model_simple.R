@@ -12,7 +12,7 @@ system(paste('Rscript --vanilla Scripts/run_cmd_simple.R'))
 library(here)
 library(tidyverse)
 library(rstan)
-load(here("Rout", "fit_03.RData"))
+load(here("Rout", "fit_03_test.RData"))
 
 rstan::traceplot(fit, pars = c("phi_case", 'sigma_Se', 
                               "log_lambda_0", "sigma_lambda_y"))

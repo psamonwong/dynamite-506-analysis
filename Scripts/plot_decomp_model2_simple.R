@@ -4,7 +4,7 @@ summarize_province_report_decomposition_model2 <- function(probs = c(0.025, 0.5,
   stopifnot(exists("fit"), exists("stan_data"))
   T <- stan_data$T; Y <- stan_data$Y; S <- stan_data$S
   year_id  <- as.integer(stan_data$year_id)    # [T]
-  N_tas    <- stan_data$N_tas  %>% apply(c(1,3), sum)
+  N_tas    <- stan_data$N_tas # %>% apply(c(1,3), sum)
 
   # Extract C_ts (expected observed cases), Se_y, Sp_y
   dr <- rstan::extract(fit, pars = c("C_ts", "Se_y", "Sp_y"), permuted = TRUE)

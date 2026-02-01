@@ -15,10 +15,10 @@ stan_data$S_t <- 1
 stan_data$N_tas <- stan_data$N_tas  %>% apply(c(1,3), sum)
 ##############################
 # MODEL FITTING
-iter <- getOption("stan.iter", 250)
-warmup <- getOption("stan.warmup", 100)
+iter <- getOption("stan.iter", 2000)
+warmup <- getOption("stan.warmup", 1000)
 chains <- getOption("stan.chains", 4)
-thin <- getOption("stan.thin", 1)
+thin <- getOption("stan.thin", 4)
 seed <- getOption("stan.seed", 124L)
 message(sprintf("Sampling: iter=%d warmup=%d chains=%d thin=%d", iter, warmup, chains, thin))
 mod <- stan_model(here("Stan_models", "Model3_decay.stan"), verbose = F)
@@ -43,7 +43,7 @@ fit <- rstan::sampling(object = mod, data = stan_data, iter = iter, warmup = war
                                                         include = TRUE)
 # SAVE OUTPUT
 save(fit, stan_data,
-     file = here("Rout", "fit_03.RData"))
+     file = here("Rout", "fit_03_test.RData"))
 ###############################
 message(sprintf("Finished at %s", Sys.time()))
 ## clear workspace

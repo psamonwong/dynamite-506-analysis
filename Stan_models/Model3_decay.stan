@@ -48,13 +48,13 @@ parameters{
   // === Force of infection parameters === //
 
   // Baseline force of infection parameters
-  real log_lambda_0;                      // overall baseline log force of infection
+  array[R] real log_lambda_0;                      // overall baseline log force of infection
   array[S] real epsilon_lambda_ys_init;   // initial year effect for each province (year 1)
   array[Y-1, S] real epsilon_lambda_ys_innov; // year-to-year innovations for each province (random walk)
 
   // Seasonal variation parameters
-  array[H, S] real a_cos;   // Fourier cosine coefficients for seasonal variation for harmonic h, province s
-  array[H, S] real a_sin;   // Fourier sine coefficients for seasonal variation for harmonic h, province s
+  array[H, P, R] real a_cos;   // Fourier cosine coefficients for seasonal variation for harmonic h, period p, region r
+  array[H, P, R] real a_sin;   // Fourier sine coefficients for seasonal variation for harmonic h, period p, region r
 
   // === Hyperparameters === //
   real<lower=0> sigma_lambda_y;          // standard deviation of year-to-year innovations (random walk)
@@ -106,19 +106,21 @@ transformed parameters {
   // === Baseline force of infection calculation === //
   for(y_ind in 1:Y)
     for(s_ind in 1:S)
-      lambda_base_ys[y_ind, s_ind] = exp(log_lambda_0 + epsilon_lambda_ys[y_ind, s_ind]);     // Baseline log force of infection at year y, province s 
+      lambda_base_ys[y_ind, s_ind] = exp(log_lambda_0[region_id[s_ind]] + epsilon_lambda_ys[y_ind, s_ind]);     // Baseline log force of infection at year y, province s 
 
-  // === Seasonal variation calculation with Fourier with H harmonics === //
+  // === Seasonal variation calculation with Fourier with H harmonics (period-region) === //
   for(y_ind in 1:Y){
+    int p = period_id[y_ind];  // period for this year
     for(s_ind in 1:S){
+      int r = region_id[s_ind];  // region for this province
       vector[M] log_kappa_yms; // log seasonal modifier for month m, year y, province s
         for(m_ind in 1:M){
             real theta = 2 * pi() * m_ind / M; // angle for month m
             real f = 0;
             for(h in 1:H){
               // Fourier series expansion for month m with harmonics h
-              f += a_cos[h, s_ind] * cos(h * theta) +
-                   a_sin[h, s_ind] * sin(h * theta);
+              f += a_cos[h, p, r] * cos(h * theta) +
+                   a_sin[h, p, r] * sin(h * theta);
             }
             log_kappa_yms[m_ind] = f;
         }
@@ -169,16 +171,22 @@ model {
     // Dispersion parameters
     phi_case ~ normal(6, 1);               // Prior for dispersion parameter for reported cases) 
     // Baseline force of infection parameters
-    log_lambda_0 ~ normal(-5, 2);               // Prior for overall baseline log force of infection
+    for(r_ind in 1:R){
+      log_lambda_0[r_ind] ~ normal(-6, 2);
+    }               // Prior for overall baseline log force of infection
     epsilon_lambda_ys_init ~ normal(0, sigma_lambda_y);   // Prior for initial year effects (each province)
     for (y in 1:(Y-1)) {
       epsilon_lambda_ys_innov[y] ~ normal(0, sigma_lambda_y);  // Prior for year-to-year innovations (each province)
     }
 
-    // Seasonal variation parameters
+    // Seasonal variation parameters (period-region)
     for(h in 1:H){
-      a_cos[h] ~ normal(0, 1);        // Prior for Fourier cosine coefficients for seasonal variation
-      a_sin[h] ~ normal(0, 1);        // Prior for Fourier sine coefficients for seasonal variation
+      for(p in 1:P){
+        for(r in 1:R){
+          a_cos[h, p, r] ~ normal(0, 1);        // Prior for Fourier cosine coefficients
+          a_sin[h, p, r] ~ normal(0, 1);        // Prior for Fourier sine coefficients
+        }
+      }
     }
 
     // Sensitivity and Specificity parameters (yearly)
