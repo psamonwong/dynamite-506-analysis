@@ -132,7 +132,7 @@ decomp2 <- summarize_province_report_decomposition_model2()
 G2 <- plot_province_report_decomposition_model2(decomp2)
 G2 + facet_wrap(province ~ ., scales = "free_y")
 
-# png(here("Figures", "province_report_decomposition_model2_simple.png"),
-#     width = 12, height = 8, units = "in", res = 300)
-# G2 + facet_wrap(province ~ ., scales = "free_y")
-# dev.off()
+png(here("Plots", "province_report_decomposition_model3_test.png"),
+    width = 26, height = 13, units = "in", res = 300)
+G2 + facet_wrap(province ~ ., scales = "free_y")
+dev.off()
