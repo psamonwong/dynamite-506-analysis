@@ -12,12 +12,12 @@ system(paste('Rscript --vanilla Scripts/run_cmd_simple.R'))
 library(here)
 library(tidyverse)
 library(rstan)
-load(here("Rout", "fit_03_test.RData"))
+load(here("Rout", "fit_04.RData"))
 
-rstan::traceplot(fit, pars = c("phi_case", 'sigma_Se', 
-                              "log_lambda_0", "sigma_lambda_y"))
+rstan::traceplot(fit, pars = c("phi_case", 'sigma_Se', "sigma_lambda_init", "logit_Se_init",
+                              "log_lambda_0", "sigma_lambda_y", "sigma_Se_province"))
 
-rstan::traceplot(fit, pars = "Se_y")
+rstan::traceplot(fit, pars = "Se_ys")
 rstan::traceplot(fit, pars = "p_sero_s")
 
 

@@ -2,8 +2,8 @@ library(here)
 library(tidyverse)
 library(rstan)
 
-load(here("Rout", "fit_03_test.RData"))  # loads 'fit', 'stan_data', 'site_levels', 'calendar'
-load(here("Rout", "stan_data_03.RData"))  # loads 'stan_data', 'calendar', 'site_levels', etc.
+load(here("Rout", "fit_04.RData"))  # loads 'fit', 'stan_data', 'site_levels', 'calendar'
+load(here("Rout", "stan_data_04.RData"))  # loads 'stan_data', 'calendar', 'site_levels', etc.
 
 s_idx <- 1  # Example province index for testing
 S <- stan_data$S
@@ -94,7 +94,7 @@ library(ggpubr)
 library(fs)
 
 # Create output directory if it doesn't exist
-dir_create("Plots/predictive_check")
+dir_create("Plots/predictive_check/Model4_inits")
 # Collect plots in a list
 plot_list <- vector("list", S)
 for (s_idx in seq_len(S)) {
@@ -119,7 +119,7 @@ for (i in seq_len(n_pages)) {
   plots_this_page <- plot_list[idx_start:idx_end]
   arranged <- ggarrange(plotlist = plots_this_page, ncol = 4, nrow = 3)
   ggsave(
-    filename = sprintf("Plots/predictive_check/predictive_check_page%02d.png", i),
+    filename = sprintf("Plots/predictive_check/Model4_inits/predictive_check_page%02d.png", i),
     plot = arranged,
     width = 16, height = 12, units = "in", dpi = 300
   )
@@ -226,34 +226,35 @@ dev.off()
 
 ################################################################
 
-# Extract and plot Se_y over time
+# Extract and plot Se over time (global trend without province random effects)
 plot_Se_over_time <- function(probs = c(0.025, 0.5, 0.975)) {
   stopifnot(exists("fit"), exists("stan_data"), exists("calendar"))
   Y <- stan_data$Y
   
-  # Extract Se_y draws [Y]
-  Se_mat <- as.matrix(fit, pars = "Se_y")
-  if (is.null(colnames(Se_mat))) stop("Se_y columns have no names; re-run sampling with pars='Se_y'.")
+  # Extract logit_Se_init and logit_Se_innov to reconstruct the global trend
+  logit_Se_init <- as.numeric(as.matrix(fit, pars = "logit_Se_init"))
+  logit_Se_innov_mat <- as.matrix(fit, pars = "logit_Se_innov")
   
-  # Parse indices from column names [y]
-  idx <- stringr::str_match(colnames(Se_mat), "Se_y\\[(\\d+)\\]")
-  if (any(is.na(idx))) stop("Failed to parse Se_y indices from column names.")
-  y_idx_col <- as.integer(idx[, 2])
+  ndraws <- length(logit_Se_init)
   
-  # Create parameter map
-  param_map <- tibble::tibble(
-    par = colnames(Se_mat), 
-    y_idx = y_idx_col
-  )
+  # Build logit_Se_y for each draw (without province random effects)
+  logit_Se_y <- matrix(NA_real_, nrow = ndraws, ncol = Y)
+  for (d in 1:ndraws) {
+    logit_Se_y[d, 1] <- logit_Se_init[d]
+    for (y in 2:Y) {
+      logit_Se_y[d, y] <- logit_Se_y[d, y-1] + logit_Se_innov_mat[d, y-1]
+    }
+  }
   
-  # Convert to long format
-  Se_long <- tibble::as_tibble(Se_mat) |>
-    dplyr::mutate(.draw = dplyr::row_number()) |>
-    tidyr::pivot_longer(cols = -.draw, names_to = "par", values_to = "Se") |>
-    dplyr::left_join(param_map, by = "par")
+  # Transform to probability scale
+  Se_y <- plogis(logit_Se_y)
   
   # Summarize by year
-  Se_summ <- Se_long |>
+  Se_summ <- tibble::tibble(
+    y_idx = rep(1:Y, each = ndraws),
+    .draw = rep(1:ndraws, times = Y),
+    Se = as.vector(t(Se_y))
+  ) |>
     dplyr::group_by(y_idx) |>
     dplyr::summarize(
       mean = mean(Se),
@@ -263,7 +264,7 @@ plot_Se_over_time <- function(probs = c(0.025, 0.5, 0.975)) {
       .groups = "drop"
     ) |>
     dplyr::mutate(
-      year = min(calendar$year) + y_idx - 1  # Map y_idx to actual year
+      year = min(calendar$year) + y_idx - 1
     )
   
   # Plot
@@ -275,12 +276,14 @@ plot_Se_over_time <- function(probs = c(0.025, 0.5, 0.975)) {
       x = "Year",
       y = "Case Detection Sensitivity (Se)",
       title = "Temporal Evolution of Case Detection Sensitivity",
-      subtitle = "Posterior mean with 95% credible intervals"
+      subtitle = "Global trend (excluding province random effects) with 95% credible intervals"
     ) +
-    scale_y_continuous(limits = c(0, 0.3), labels = scales::percent) +
+    scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
     theme_bw(base_size = 14) +
     theme(panel.grid.minor = element_blank())
 }
+
+plot_Se_over_time()
 
 pname <- here("Plots", "Se_over_time.png")
 png(filename = pname, width = 6, height = 6, units = "in", res = 300)

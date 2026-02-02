@@ -4,14 +4,14 @@ summarize_province_report_decomposition_model2 <- function(probs = c(0.025, 0.5,
   stopifnot(exists("fit"), exists("stan_data"))
   T <- stan_data$T; Y <- stan_data$Y; S <- stan_data$S
   year_id  <- as.integer(stan_data$year_id)    # [T]
-  N_tas    <- stan_data$N_tas # %>% apply(c(1,3), sum)
+  N_tas    <- stan_data$N_tas  %>% apply(c(1,3), sum)
 
   # Extract C_ts (expected observed cases), Se_y, Sp_y
-  dr <- rstan::extract(fit, pars = c("C_ts", "Se_y", "Sp_y"), permuted = TRUE)
+  dr <- rstan::extract(fit, pars = c("C_ts", "Se_ys", "Sp_y"), permuted = TRUE)
 
   # Draw arrays
   C_draw   <- dr$C_ts     # [draw, T, S]
-  Se_draw  <- dr$Se_y     # [draw, Y]
+  Se_draw  <- dr$Se_ys     # [draw, Y]
   Sp_draw  <- dr$Sp_y     # [draw, Y]
   n_draws  <- dim(C_draw)[1]
 
@@ -22,7 +22,7 @@ summarize_province_report_decomposition_model2 <- function(probs = c(0.025, 0.5,
       y <- year_id[t]
       for (s in seq_len(S)) {
         FP_ts <- (1 - Sp_draw[i, y]) * N_tas[t, s]
-        I_draw[i, t, s] <- pmax((C_draw[i, t, s] - FP_ts) / (Se_draw[i, y] + 1e-9), 0)
+        I_draw[i, t, s] <- pmax((C_draw[i, t, s] - FP_ts) / (Se_draw[i, y,s] + 1e-9), 0)
       }
     }
   }
@@ -35,7 +35,7 @@ summarize_province_report_decomposition_model2 <- function(probs = c(0.025, 0.5,
     for (t in seq_len(T)) {
       y <- year_id[t]
       for (s in seq_len(S)) {
-        true_rep_month[i, t, s] <- I_draw[i, t, s] * Se_draw[i, y]
+        true_rep_month[i, t, s] <- I_draw[i, t, s] * Se_draw[i, y,s]
         # FP per month-province: (1 - Sp_y) * N
         FP_draw[i, t, s] <- (1 - Sp_draw[i, y]) * N_tas[t, s]
       }
@@ -47,7 +47,7 @@ summarize_province_report_decomposition_model2 <- function(probs = c(0.025, 0.5,
   for (i in seq_len(n_draws)) {
     for (t in seq_len(T)) {
       y <- year_id[t]
-      ratio <- (1 - Se_draw[i, y]) / (Se_draw[i, y] + 1e-9)
+      ratio <- (1 - Se_draw[i, y,s]) / (Se_draw[i, y,s] + 1e-9)
       for (s in seq_len(S)) {
         missed_month[i, t, s] <- pmax(ratio, 0) * true_rep_month[i, t, s]
       }
@@ -132,7 +132,7 @@ decomp2 <- summarize_province_report_decomposition_model2()
 G2 <- plot_province_report_decomposition_model2(decomp2)
 G2 + facet_wrap(province ~ ., scales = "free_y")
 
-png(here("Plots", "province_report_decomposition_model3_test.png"),
-    width = 26, height = 13, units = "in", res = 300)
-G2 + facet_wrap(province ~ ., scales = "free_y")
-dev.off()
+# png(here("Figures", "province_report_decomposition_model2_simple.png"),
+#     width = 12, height = 8, units = "in", res = 300)
+# G2 + facet_wrap(province ~ ., scales = "free_y")
+# dev.off()

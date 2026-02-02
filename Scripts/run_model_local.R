@@ -16,10 +16,10 @@ population_data <- read_csv(here("Analysis_data", "Population", "population_data
 sero_data <- read_csv(here("Analysis_data", "Gonwong_sero_data.csv"))
 
 # Setup
-area <- case_data %>% distinct(Area) %>% pull(Area)
-#c( "Chiang Rai", "Lampang",  "Nakhon Ratchasima", "Surin", "Songkhla", "Phatthalung", "Uttaradit", "Tak")
-period_size <- 10
-n_periods <- 2
+area <- #case_data %>% distinct(Area) %>% pull(Area)
+c( "Chiang Rai", "Lampang",  "Nakhon Ratchasima", "Surin", "Songkhla", "Phatthalung", "Uttaradit", "Tak")
+period_size <- 5
+n_periods <- 4
 start_year <- 2004
 year_selected <- seq(from = start_year, to = start_year + period_size * n_periods - 1)
 
@@ -197,4 +197,4 @@ stan_data <- list(
 
 
 save(stan_data, calendar, site_levels, region_levels, age_levels, 
-     file = here("Rout", "stan_data_03.RData"))
+     file = here("Rout", "stan_data_04.RData"))
