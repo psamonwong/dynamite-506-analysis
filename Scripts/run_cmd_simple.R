@@ -28,7 +28,7 @@ fit <- rstan::sampling(object = mod, data = stan_data, iter = iter, warmup = war
                                                         control = list(adapt_delta = 0.95, max_treedepth = 12),
                                                         pars = c(
                                                              "phi_case",
-                                                             "Se_ys",
+                                                             "Se_y",
                                                              "Sp_y",
                                                              "C_ts",
                                                              "log_lambda_0",
@@ -38,7 +38,6 @@ fit <- rstan::sampling(object = mod, data = stan_data, iter = iter, warmup = war
                                                              "a_sin",
                                                              "sigma_lambda_init",
                                                              "sigma_lambda_y",
-                                                             "sigma_Se_province",
                                                              "sigma_Se", "logit_Se_init", 'logit_Se_innov',
                                                              'p_sero_s'
                                                         ),

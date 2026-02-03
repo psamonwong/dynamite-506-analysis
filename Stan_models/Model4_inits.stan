@@ -43,7 +43,6 @@ parameters{
   
   // === Test sensitivity and specificity parameters (yearly constants) === //
   real logit_Se_init;                   // Initial sensitivity (year 1) on logit scale (global)
-  array[S] real epsilon_Se_s;           // Province-specific random effects on initial sensitivity
   array[Y-1] real logit_Se_innov;       // Year-to-year innovations for sensitivity (random walk)
 
   // === Force of infection parameters === //
@@ -61,7 +60,6 @@ parameters{
   real<lower=0> sigma_lambda_y;          // standard deviation of year-to-year innovations (random walk)
   real<lower=0> sigma_lambda_init;      // standard deviation of initial year effects
   real<lower=0> sigma_Se;                // standard deviation of sensitivity innovations (random walk)
-  real<lower=0> sigma_Se_province;       // standard deviation of province-specific sensitivity effects
   
 }
 
@@ -74,7 +72,7 @@ transformed parameters {
   array[Y, M, S] real<lower=0> kappa_seasonal_yms;   // seasonal variation component of log force of infection at year y, province s, month m
   
   array[Y] real<lower=0, upper=1> Sp_y;        // Test specificity for year y
-  array[Y, S] real<lower=0, upper=1> Se_ys;    // Test sensitivity for year y, province s (random walk)
+  array[Y] real<lower=0, upper=1> Se_y;        // Test sensitivity for year y (random walk)
   array[Y, S] real epsilon_lambda_ys;          // province-specific year effects (random walk)
 
   for(i in 1:Y) Sp_y[i] = 1; // initialize specificity
@@ -83,15 +81,15 @@ transformed parameters {
   array[S] real<lower=0, upper=1> p_sero_s;   // seroprevalence in each province
   array[S] real lambda_star_s;              // average force of infection for seroprevalence calculation during serology year
   
-  // Build sensitivity random walk on logit scale (province-specific)
-  for (s_ind in 1:S) {
-    array[Y] real logit_Se_ys;
-    logit_Se_ys[1] = logit_Se_init + epsilon_Se_s[s_ind];  // Province-specific intercept
+  // Build sensitivity random walk on logit scale
+  {
+    array[Y] real logit_Se_y;
+    logit_Se_y[1] = logit_Se_init;
     for (y in 2:Y) {
-      logit_Se_ys[y] = logit_Se_ys[y-1] + logit_Se_innov[y-1];  // Shared temporal trend
+      logit_Se_y[y] = logit_Se_y[y-1] + logit_Se_innov[y-1];
     }
     for (y in 1:Y) {
-      Se_ys[y, s_ind] = inv_logit(logit_Se_ys[y]);
+      Se_y[y] = inv_logit(logit_Se_y[y]);
     }
   }
   
@@ -144,7 +142,7 @@ transformed parameters {
   // === Observed cases calculation === //
   for(t_ind in 1:T)
     for(s_ind in 1:S)
-      C_ts[t_ind, s_ind] = (I_ts[t_ind, s_ind] * Se_ys[year_id[t_ind], s_ind]) + ((1 - Sp_y[year_id[t_ind]]) * N_tas[t_ind, s_ind]);      // Expected observed cases at time t, province s 
+      C_ts[t_ind, s_ind] = (I_ts[t_ind, s_ind] * Se_y[year_id[t_ind]]) + ((1 - Sp_y[year_id[t_ind]]) * N_tas[t_ind, s_ind]);      // Expected observed cases at time t, province s 
 
 
   // === Seroprevalence calculation === //
@@ -191,10 +189,8 @@ model {
 
     // Sensitivity and Specificity parameters (yearly)
     logit_Se_init ~ normal(logit(0.5), 0.3);           // Prior for initial sensitivity (centered at 0.5)
-    epsilon_Se_s ~ normal(0, sigma_Se_province);       // Prior for province-specific sensitivity effects
     logit_Se_innov ~ normal(0, sigma_Se);              // Prior for year-to-year innovations (allows gradual changes and shocks)
     sigma_Se ~ exponential(1);                         // Prior for sensitivity innovation SD (allows flexibility for shocks)
-    sigma_Se_province ~ normal(0.1, 0.05) ;           // Prior for province-specific sensitivity SD (mean = 0.05)
 
     // Hyperparameters
     sigma_lambda_y ~ normal(0.05, 0.01); // Prior for standard deviation of year-to-year innovations (constrained for gradual changes)

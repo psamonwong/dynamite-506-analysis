@@ -226,35 +226,34 @@ dev.off()
 
 ################################################################
 
-# Extract and plot Se over time (global trend without province random effects)
+# Extract and plot Se_y over time
 plot_Se_over_time <- function(probs = c(0.025, 0.5, 0.975)) {
   stopifnot(exists("fit"), exists("stan_data"), exists("calendar"))
   Y <- stan_data$Y
   
-  # Extract logit_Se_init and logit_Se_innov to reconstruct the global trend
-  logit_Se_init <- as.numeric(as.matrix(fit, pars = "logit_Se_init"))
-  logit_Se_innov_mat <- as.matrix(fit, pars = "logit_Se_innov")
+  # Extract Se_y draws [Y]
+  Se_mat <- as.matrix(fit, pars = "Se_y")
+  if (is.null(colnames(Se_mat))) stop("Se_y columns have no names; re-run sampling with pars='Se_y'.")
   
-  ndraws <- length(logit_Se_init)
+  # Parse indices from column names [y]
+  idx <- stringr::str_match(colnames(Se_mat), "Se_y\\[(\\d+)\\]")
+  if (any(is.na(idx))) stop("Failed to parse Se_y indices from column names.")
+  y_idx_col <- as.integer(idx[, 2])
   
-  # Build logit_Se_y for each draw (without province random effects)
-  logit_Se_y <- matrix(NA_real_, nrow = ndraws, ncol = Y)
-  for (d in 1:ndraws) {
-    logit_Se_y[d, 1] <- logit_Se_init[d]
-    for (y in 2:Y) {
-      logit_Se_y[d, y] <- logit_Se_y[d, y-1] + logit_Se_innov_mat[d, y-1]
-    }
-  }
+  # Create parameter map
+  param_map <- tibble::tibble(
+    par = colnames(Se_mat), 
+    y_idx = y_idx_col
+  )
   
-  # Transform to probability scale
-  Se_y <- plogis(logit_Se_y)
+  # Convert to long format
+  Se_long <- tibble::as_tibble(Se_mat) |>
+    dplyr::mutate(.draw = dplyr::row_number()) |>
+    tidyr::pivot_longer(cols = -.draw, names_to = "par", values_to = "Se") |>
+    dplyr::left_join(param_map, by = "par")
   
   # Summarize by year
-  Se_summ <- tibble::tibble(
-    y_idx = rep(1:Y, each = ndraws),
-    .draw = rep(1:ndraws, times = Y),
-    Se = as.vector(t(Se_y))
-  ) |>
+  Se_summ <- Se_long |>
     dplyr::group_by(y_idx) |>
     dplyr::summarize(
       mean = mean(Se),
@@ -264,7 +263,7 @@ plot_Se_over_time <- function(probs = c(0.025, 0.5, 0.975)) {
       .groups = "drop"
     ) |>
     dplyr::mutate(
-      year = min(calendar$year) + y_idx - 1
+      year = min(calendar$year) + y_idx - 1  # Map y_idx to actual year
     )
   
   # Plot
@@ -276,7 +275,7 @@ plot_Se_over_time <- function(probs = c(0.025, 0.5, 0.975)) {
       x = "Year",
       y = "Case Detection Sensitivity (Se)",
       title = "Temporal Evolution of Case Detection Sensitivity",
-      subtitle = "Global trend (excluding province random effects) with 95% credible intervals"
+      subtitle = "Posterior mean with 95% credible intervals"
     ) +
     scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
     theme_bw(base_size = 14) +
