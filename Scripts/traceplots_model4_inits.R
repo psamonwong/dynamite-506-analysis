@@ -11,7 +11,17 @@ rstan::traceplot(fit, pars = 'log_lambda_0')
 rstan::traceplot(fit, pars = 'sigma_lambda_init')
 rstan::traceplot(fit, pars = 'sigma_lambda_y')
 
-# Seasonality (Fourier coefficients - province-specific)
+# Seasonality baseline (province-specific, time-invariant)
+rstan::traceplot(fit, pars = 'a_cos_base')
+rstan::traceplot(fit, pars = 'a_sin_base')
+rstan::traceplot(fit, pars = 'tau_cos_base')
+rstan::traceplot(fit, pars = 'tau_sin_base')
+
+# Year-specific deviations from baseline
+rstan::traceplot(fit, pars = 'sigma_delta_cos')
+rstan::traceplot(fit, pars = 'sigma_delta_sin')
+
+# Seasonality (year-province specific, derived)
 rstan::traceplot(fit, pars = 'a_cos')
 rstan::traceplot(fit, pars = 'a_sin')
 
