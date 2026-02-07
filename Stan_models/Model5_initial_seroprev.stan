@@ -66,10 +66,13 @@ parameters{
   array[P] real<lower=0> sigma_delta_cos; // how much period p deviates from baseline
   array[P] real<lower=0> sigma_delta_sin; // how much period p deviates from baseline
 
+  array[S] real<lower=0> H0_s; // initial background hazard (pre-surveillance period)
+
   // === Hyperparameters === //
   real<lower=0> sigma_lambda_y;          // standard deviation of year-to-year innovations (random walk)
   real<lower=0> sigma_lambda_init;      // standard deviation of initial year effects
   real<lower=0> sigma_Se;                // standard deviation of sensitivity innovations (random walk)
+
   
 }
 
@@ -175,13 +178,13 @@ transformed parameters {
     real p_sum = 0;
     for (k in 1:K_sero) {
       int y0 = sero_year_id[k];                 // serology measurement year
-      real Hazards = 0;                                // cumulative annual hazard up to y0
+      real Hazards = H0_s[s_ind] * exp(-omega * y0);
       for (y_ind in 1:y0) {
         real years_since = y0 - y_ind;
         real lambda_year = 12 * lambda_base_ys[y_ind, s_ind];   // year^-1
         Hazards += lambda_year * exp(-omega * years_since);       // waning discount
       }
-      real p_y = 1 - exp(-Hazards);                    // prevalence for year y0
+      real p_y = (1 - exp(-Hazards));                    // prevalence for year y0
       p_sum += p_y;
     }
     p_sero_s[s_ind] = p_sum / K_sero;            // average across 2007–2012
@@ -199,6 +202,7 @@ model {
     sigma_lambda_0 ~ normal(0.1, 0.05);     // SD for province baselines (mean 0.0001)
     for(s in 1:S){
       log_lambda_0_s[s] ~ normal(mu_log_lambda_0, sigma_lambda_0);
+      H0_s[s] ~ exponential(1);
     }
     epsilon_lambda_ys_init ~ normal(0, sigma_lambda_init);   // Prior for initial year effects (each province)
     sigma_lambda_init ~ exponential(10); // Prior for initial year effects SD (mean 0.02)
