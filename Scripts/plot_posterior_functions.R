@@ -203,8 +203,8 @@ plot_lambda_base_by_region <- function(lambda_data = NULL) {
       yearly_q975  = (1 - exp(-12 * q975)) * 1e5
     ) |>
     ggplot(aes(x = year, y = yearly_mean, group = province)) +
-    geom_ribbon(aes(ymin = yearly_q025, ymax = yearly_q975), alpha = 0.15, fill = "gray40") +
-    geom_line(linewidth = 0.8, color = "gray20", alpha = 0.7) +
+    geom_ribbon(aes(ymin = yearly_q025, ymax = yearly_q975, fill = province), alpha = 0.15) +
+    geom_line(linewidth = 0.8, aes(color = province), alpha = 0.7) +
     labs(
       x = "Year",
       y = "Yearly incidence per 100,000",
@@ -212,7 +212,7 @@ plot_lambda_base_by_region <- function(lambda_data = NULL) {
       subtitle = "Faceted by region, each line represents a province"
     ) +
     theme_bw(base_size = 14) +
-    theme(legend.position = "none") +
+    #theme(legend.position = "none") +
     facet_wrap(~ region, scales = "free_y", ncol = 4)
 }
 
@@ -277,7 +277,7 @@ plot_Se_over_time <- function(probs = c(0.025, 0.5, 0.975)) {
       title = "Temporal Evolution of Case Detection Sensitivity",
       subtitle = "Posterior mean with 95% credible intervals"
     ) +
-    scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+    scale_y_continuous(limits = c(0, 0.3), labels = scales::percent) +
     theme_bw(base_size = 14) +
     theme(panel.grid.minor = element_blank())
 }

@@ -20,7 +20,7 @@ area <- #case_data %>% distinct(Area) %>% pull(Area)
 c( "Chiang Rai", "Lampang",  "Nakhon Ratchasima", "Surin", "Songkhla", "Phatthalung", "Uttaradit", "Tak")
 period_size <- 5
 n_periods <- 4
-start_year <- 2004
+start_year <- 2003
 year_selected <- seq(from = start_year, to = start_year + period_size * n_periods - 1)
 
 # Filter case data

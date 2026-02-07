@@ -15,7 +15,7 @@ stan_data$S_t <- 1
 stan_data$N_tas <- stan_data$N_tas  %>% apply(c(1,3), sum)
 ##############################
 # MODEL FITTING
-iter <- getOption("stan.iter", 250)
+iter <- getOption("stan.iter", 200)
 warmup <- getOption("stan.warmup", 100)
 chains <- getOption("stan.chains", 4)
 thin <- getOption("stan.thin", 1)
@@ -31,7 +31,9 @@ fit <- rstan::sampling(object = mod, data = stan_data, iter = iter, warmup = war
                                                              "Se_y",
                                                              "Sp_y",
                                                              "C_ts",
-                                                             "log_lambda_0",
+                                                             "mu_log_lambda_0",
+                                                             "log_lambda_0_s",
+                                                             "sigma_lambda_0",
                                                              "epsilon_lambda_ys",
                                                              "lambda_base_ys",
                                                              "a_cos",

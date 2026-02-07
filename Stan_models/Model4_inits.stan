@@ -48,21 +48,23 @@ parameters{
   // === Force of infection parameters === //
 
   // Baseline force of infection parameters
-  real log_lambda_0;                      // overall baseline log force of infection
+  real mu_log_lambda_0;                   // global mean baseline log force of infection
+  array[S] real log_lambda_0_s;           // province-specific baseline log force of infection
+  real<lower=0> sigma_lambda_0;           // SD for province baseline log force of infection
   array[S] real epsilon_lambda_ys_init;   // initial year effect for each province (year 1)
   array[Y-1, S] real epsilon_lambda_ys_innov; // year-to-year innovations for each province (random walk)
 
-  // Seasonal variation parameters (baseline + year deviations)
+  // Seasonal variation parameters (baseline + period deviations)
   array[H, S] real a_cos_base;            // province baseline seasonality (time-invariant)
   array[H, S] real a_sin_base;            // province baseline seasonality (time-invariant)
-  array[H, Y, S] real delta_cos_raw;      // year-specific deviations from baseline (raw)
-  array[H, Y, S] real delta_sin_raw;      // year-specific deviations from baseline (raw)
+  array[H, P, S] real delta_cos_raw;      // period-specific deviations from baseline (raw)
+  array[H, P, S] real delta_sin_raw;      // period-specific deviations from baseline (raw)
   
   // Hierarchical hyperparameters for seasonality
   array[S] real<lower=0> tau_cos_base;    // amplitude of baseline seasonality for each province
   array[S] real<lower=0> tau_sin_base;    // amplitude of baseline seasonality for each province
-  array[Y] real<lower=0> sigma_delta_cos; // how much year y deviates from baseline
-  array[Y] real<lower=0> sigma_delta_sin; // how much year y deviates from baseline
+  array[P] real<lower=0> sigma_delta_cos; // how much period p deviates from baseline
+  array[P] real<lower=0> sigma_delta_sin; // how much period p deviates from baseline
 
   // === Hyperparameters === //
   real<lower=0> sigma_lambda_y;          // standard deviation of year-to-year innovations (random walk)
@@ -83,9 +85,9 @@ transformed parameters {
   array[Y] real<lower=0, upper=1> Se_y;        // Test sensitivity for year y (random walk)
   array[Y, S] real epsilon_lambda_ys;          // province-specific year effects (random walk)
   
-  // Year-specific seasonal coefficients (baseline + deviation)
-  array[H, Y, S] real a_cos;
-  array[H, Y, S] real a_sin;
+  // Period-specific seasonal coefficients (baseline + deviation)
+  array[H, P, S] real a_cos;
+  array[H, P, S] real a_sin;
 
   for(i in 1:Y) Sp_y[i] = 1; // initialize specificity
 
@@ -93,14 +95,14 @@ transformed parameters {
   array[S] real<lower=0, upper=1> p_sero_s;   // seroprevalence in each province
   array[S] real lambda_star_s;              // average force of infection for seroprevalence calculation during serology year
   
-  // Build year-specific seasonal coefficients: baseline + year deviation
+  // Build period-specific seasonal coefficients: baseline + period deviation
   for(h in 1:H){
-    for(y in 1:Y){
+    for(p in 1:P){
       for(s in 1:S){
-        a_cos[h, y, s] = tau_cos_base[s] * a_cos_base[h, s] + 
-                         sigma_delta_cos[y] * delta_cos_raw[h, y, s];
-        a_sin[h, y, s] = tau_sin_base[s] * a_sin_base[h, s] + 
-                         sigma_delta_sin[y] * delta_sin_raw[h, y, s];
+        a_cos[h, p, s] = tau_cos_base[s] * a_cos_base[h, s] + 
+                         sigma_delta_cos[p] * delta_cos_raw[h, p, s];
+        a_sin[h, p, s] = tau_sin_base[s] * a_sin_base[h, s] + 
+                         sigma_delta_sin[p] * delta_sin_raw[h, p, s];
       }
     }
   }
@@ -128,9 +130,9 @@ transformed parameters {
   // === Baseline force of infection calculation === //
   for(y_ind in 1:Y)
     for(s_ind in 1:S)
-      lambda_base_ys[y_ind, s_ind] = exp(log_lambda_0 + epsilon_lambda_ys[y_ind, s_ind]);     // Baseline log force of infection at year y, province s 
+      lambda_base_ys[y_ind, s_ind] = exp(log_lambda_0_s[s_ind] + epsilon_lambda_ys[y_ind, s_ind]);     // Baseline log force of infection at year y, province s 
 
-  // === Seasonal variation calculation with Fourier with H harmonics (year-province) === //
+  // === Seasonal variation calculation with Fourier with H harmonics (period-province) === //
   for(y_ind in 1:Y){
     for(s_ind in 1:S){
       vector[M] log_kappa_yms; // log seasonal modifier for month m, year y, province s
@@ -139,8 +141,8 @@ transformed parameters {
             real f = 0;
             for(h in 1:H){
               // Fourier series expansion for month m with harmonics h
-              f += a_cos[h, y_ind, s_ind] * cos(h * theta) +
-                   a_sin[h, y_ind, s_ind] * sin(h * theta);
+              f += a_cos[h, period_id[y_ind], s_ind] * cos(h * theta) +
+                   a_sin[h, period_id[y_ind], s_ind] * sin(h * theta);
             }
             log_kappa_yms[m_ind] = f;
         }
@@ -192,7 +194,12 @@ model {
     phi_case ~ normal(6, 1);               // Prior for dispersion parameter for reported cases) 
     // Baseline force of infection parameters
     
-    log_lambda_0 ~ normal(-6, 2);    // Prior for overall baseline log force of infection
+    // Baseline FOI: province-specific random effects
+    mu_log_lambda_0 ~ normal(-10, 2);    // Prior for global mean baseline log FOI
+    sigma_lambda_0 ~ normal(0.1, 0.05);     // SD for province baselines (mean 0.0001)
+    for(s in 1:S){
+      log_lambda_0_s[s] ~ normal(mu_log_lambda_0, sigma_lambda_0);
+    }
     epsilon_lambda_ys_init ~ normal(0, sigma_lambda_init);   // Prior for initial year effects (each province)
     sigma_lambda_init ~ exponential(10); // Prior for initial year effects SD (mean 0.02)
 
@@ -215,26 +222,26 @@ model {
       tau_sin_base[s] ~ normal(0, 0.5);
     }
     
-    // Year-specific deviation scales with temporal smoothing
-    sigma_delta_cos[1] ~ normal(0, 0.05);  // first year: small deviation from baseline
+    // Period-specific deviation scales with temporal smoothing (no special constraint for first period)
+    sigma_delta_cos[1] ~ normal(0, 0.05);
     sigma_delta_sin[1] ~ normal(0, 0.05);
-    for(y in 2:Y){
-      sigma_delta_cos[y] ~ normal(sigma_delta_cos[y-1], 0.05);  // smooth evolution
-      sigma_delta_sin[y] ~ normal(sigma_delta_sin[y-1], 0.05);
+    for(p in 2:P){
+      sigma_delta_cos[p] ~ normal(sigma_delta_cos[p-1], 0.05);
+      sigma_delta_sin[p] ~ normal(sigma_delta_sin[p-1], 0.05);
     }
     
-    // Raw year deviations (standard normal)
+    // Raw period deviations (standard normal)
     for(h in 1:H){
-      for(y in 1:Y){
+      for(p in 1:P){
         for(s in 1:S){
-          delta_cos_raw[h, y, s] ~ std_normal();
-          delta_sin_raw[h, y, s] ~ std_normal();
+          delta_cos_raw[h, p, s] ~ std_normal();
+          delta_sin_raw[h, p, s] ~ std_normal();
         }
       }
     }
 
     // Sensitivity and Specificity parameters (yearly)
-    logit_Se_init ~ normal(logit(0.5), 0.3);           // Prior for initial sensitivity (centered at 0.5)
+    logit_Se_init ~ normal(logit(0.4), 0.3);           // Prior for initial sensitivity (centered at 0.5)
     logit_Se_innov ~ normal(0, sigma_Se);              // Prior for year-to-year innovations (allows gradual changes and shocks)
     sigma_Se ~ exponential(1);                         // Prior for sensitivity innovation SD (allows flexibility for shocks)
 
