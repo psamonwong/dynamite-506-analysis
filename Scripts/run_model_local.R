@@ -16,14 +16,36 @@ population_data <- read_csv(here("Analysis_data", "Population", "population_data
 sero_data <- read_csv(here("Analysis_data", "Gonwong_sero_data.csv"))
 
 # Setup
-area <- #case_data %>% distinct(Area) %>% pull(Area)
-c( "Chiang Rai", "Lampang",  "Nakhon Ratchasima", "Surin", "Songkhla", "Phatthalung", "Uttaradit", "Tak")
-period_size <- 5
-n_periods <- 4
-start_year <- 2003
-year_selected <- seq(from = start_year, to = start_year + period_size * n_periods - 1)
+area <- case_data %>% distinct(Area) %>% pull(Area)
+#c( "Chiang Rai", "Lampang",  "Nakhon Ratchasima", "Surin", "Songkhla", "Phatthalung", "Uttaradit", "Tak")
 
-# Filter case data
+start_year <- 2003
+end_year   <- 2024
+n_periods  <- 4
+
+year_selected <- start_year:end_year
+n_years <- length(year_selected)
+
+# Base size and remainder
+base_size <- n_years %/% n_periods
+remainder <- n_years %% n_periods
+
+# Distribute remainder to later periods
+period_sizes <- rep(base_size, n_periods)
+period_sizes[(n_periods - remainder + 1):n_periods] <- 
+  period_sizes[(n_periods - remainder + 1):n_periods] + 1
+
+periods <- split(
+  years,
+  rep(1:n_periods, times = period_sizes)
+)
+
+# period_size <- 5
+# n_periods <- 4
+# start_year <- 2003
+# year_selected <- seq(from = start_year, to = start_year + period_size * n_periods - 1)
+
+# Filter case data  
 case_data_area <- case_data %>%
   filter(Area %in% area, year %in% year_selected) %>%
   arrange(Area, year, Month)
@@ -83,7 +105,8 @@ Y <- length(year_levels)
 M <- 12L
 T <- Y * M
 
-block_of_year <- 1L + (year_levels - min(year_levels)) %/% period_size
+
+block_of_year <- rep(1:n_periods, times = period_sizes)    #1L + (year_levels - min(year_levels)) %/% period_size
 P <- max(block_of_year)
 
 # Mapping vectors
@@ -197,4 +220,4 @@ stan_data <- list(
 
 
 save(stan_data, calendar, site_levels, region_levels, age_levels, 
-     file = here("Rout", "stan_data_04.RData"))
+     file = here("Rout", "stan_data_06.RData"))
