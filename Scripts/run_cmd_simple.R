@@ -2,6 +2,8 @@ library(here)
 library(tidyverse)
 library(rstan)
 
+source('Scripts/init_function.R')
+
 ## RUN MODEL
 rstan_options(auto_write = TRUE)
 options(mc.cores = parallel::detectCores())
@@ -24,8 +26,9 @@ message(sprintf("Sampling: iter=%d warmup=%d chains=%d thin=%d", iter, warmup, c
 mod <- stan_model(here("Stan_models", "Model6_region_SE.stan"), verbose = F)
 fit <- rstan::sampling(object = mod, data = stan_data, iter = iter, warmup = warmup, cores = 4,
                        chains = chains, thin = thin, seed = seed, 
-                       refresh = max(1, iter * 0.05),  # print progress every 5%
+                       refresh = max(1, iter * 0.01),  # print progress every 5%
                                                         control = list(adapt_delta = 0.95, max_treedepth = 12),
+                                                        init = function() init_fun(stan_data),
                                                         pars = c(
                                                              "phi_case",
                                                              "Se_y",
