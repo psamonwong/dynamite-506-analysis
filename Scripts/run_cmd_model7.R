@@ -25,7 +25,7 @@ seed <- getOption("stan.seed", 124L)
 
 message(sprintf("Sampling: iter=%d warmup=%d chains=%d thin=%d", iter, warmup, chains, thin))
 
-mod <- stan_model(here("Stan_models", "Model7_age_effects.stan"), verbose = FALSE)
+mod <- stan_model(here("Stan_models", "Model8_deaths.stan"), verbose = FALSE)
 
 fit <- rstan::sampling(
   object = mod, 
@@ -53,11 +53,11 @@ fit <- rstan::sampling(
     # Force of infection - baseline
     "mu_log_lambda_0",
     "log_lambda_0_s",
-    "sigma_lambda_0",
+    #"sigma_lambda_0",
     "sigma_lambda_init",
     "epsilon_lambda_ys",
     "lambda_base_ys",
-    "sigma_lambda_y",
+  #  "sigma_lambda_y",
     
     # Seasonality
     "a_cos",
@@ -89,13 +89,13 @@ fit <- rstan::sampling(
 
 # SAVE OUTPUT
 save(fit, stan_data, calendar, site_levels, region_levels, age_levels,
-     file = here("Rout", "fit_07.RData"))
+     file = here("Rout", "fit_08.RData"))
 
 ###############################
 message(sprintf("Finished at %s", Sys.time()))
 
 ## Summary statistics
-print(fit, probs = c(0.025, 0.5, 0.975), digits = 3)
+#print(fit, probs = c(0.025, 0.5, 0.975), digits = 3)
 
 ## clear workspace
 rm(list = ls())

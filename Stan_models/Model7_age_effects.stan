@@ -44,6 +44,12 @@ data {
 
   // Clinical fraction
   real<lower=0, upper=1> nu;
+  
+  // Fixed hyperparameter for baseline FOI variation across provinces
+  real<lower=0> sigma_lambda_0;
+  
+  // Fixed year-to-year FOI variation
+  real<lower=0> sigma_lambda_y;
 }
 
 parameters{
@@ -57,7 +63,6 @@ parameters{
   // === Force of infection parameters === //
   real mu_log_lambda_0;
   array[S] real log_lambda_0_s;
-  real<lower=0> sigma_lambda_0;
   array[S] real epsilon_lambda_ys_init;
   array[Y-1, S] real epsilon_lambda_ys_innov;
 
@@ -79,7 +84,6 @@ parameters{
   array[S] real<lower=0> H0_s;
 
   // === Hyperparameters === //
-  real<lower=0> sigma_lambda_y;
   real<lower=0> sigma_lambda_init;
   real<lower=0> sigma_Se;
 }
@@ -266,7 +270,6 @@ model {
     phi_case ~ normal(6, 1);
 
     mu_log_lambda_0 ~ normal(-10, 2);
-    sigma_lambda_0 ~ normal(0.1, 0.05);
     for(s in 1:S){
       log_lambda_0_s[s] ~ normal(mu_log_lambda_0, sigma_lambda_0);
       H0_s[s] ~ exponential(1);
@@ -322,9 +325,6 @@ model {
         log_rho_pa[p, a] ~ normal(0, sigma_rho);
       }
     }
-
-    // Hyperparameter priors
-    sigma_lambda_y ~ normal(0.05, 0.01);
 
     // === Likelihoods === //
     // Monthly case totals: negative binomial

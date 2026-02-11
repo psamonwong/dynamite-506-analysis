@@ -247,7 +247,9 @@ stan_data <- list(
   
   # Fixed parameters
   omega = omega,
-  nu = nu
+  nu = nu,
+  sigma_lambda_0 = 0.1,
+  sigma_lambda_y = 0.122
 )
 
 save(stan_data, calendar, site_levels, region_levels, age_levels, 
