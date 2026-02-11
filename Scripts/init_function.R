@@ -4,6 +4,7 @@ init_fun <- function(stan_data) {
   R <- stan_data$R
   H <- stan_data$H
   P <- stan_data$P
+  A <- stan_data$A  # Add age dimension for Model 7
 
   list(
     # Dispersion
@@ -37,6 +38,10 @@ init_fun <- function(stan_data) {
 
     delta_cos_raw = array(rnorm(H*P*S, 0, 1), c(H,P,S)),
     delta_sin_raw = array(rnorm(H*P*S, 0, 1), c(H,P,S)),
+
+    # Age-specific susceptibility (Model 7 only)
+    log_rho_pa = array(rnorm(P*A, 0, 0.1), c(P, A)),
+    sigma_rho = abs(rnorm(1, 0.1, 0.05)),
 
     # Background hazard
     H0_s = rexp(S, 1)

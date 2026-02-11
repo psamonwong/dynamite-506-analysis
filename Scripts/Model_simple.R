@@ -9,6 +9,7 @@ system(paste('Rscript --vanilla Scripts/run_cmd_simple.R'))
 # load(here("Rout", "fit_02.RData"))
 
 
+
 library(here)
 library(tidyverse)
 library(rstan)
@@ -24,7 +25,6 @@ rstan::traceplot(fit, pars = "sigma_delta_cos")
 
 
 
-ss
 
 
 
