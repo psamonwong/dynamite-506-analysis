@@ -194,11 +194,11 @@ transformed parameters {
       CFR_pa[p_ind, a_ind] = inv_logit(mu_logit_CFR + sigma_CFR * logit_CFR_pa_raw[p_ind, a_ind]);
     }
     // Normalize: set reference age group to CFR = 1 (proportional adjustment)
-    real ref_CFR = CFR_pa[p_ind, ref_age];
-    for(a_ind in 1:A){
-      CFR_pa[p_ind, a_ind] = CFR_pa[p_ind, a_ind] / ref_CFR;
-      CFR_pa[p_ind, a_ind] = fmin(CFR_pa[p_ind, a_ind], 0.99);  // Cap at 99%
-    }
+    // real ref_CFR = CFR_pa[p_ind, ref_age];
+    // for(a_ind in 1:A){
+    //   CFR_pa[p_ind, a_ind] = CFR_pa[p_ind, a_ind] / ref_CFR;
+    //   CFR_pa[p_ind, a_ind] = fmin(CFR_pa[p_ind, a_ind], 0.99);  // Cap at 99%
+    // }
   }
 
   // === Force of infection by time and site (using precomputed Fourier basis) === //
