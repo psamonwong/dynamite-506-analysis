@@ -285,7 +285,7 @@ plot_Se_over_time <- function(probs = c(0.025, 0.5, 0.975)) {
     scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
     theme_bw(base_size = 14) +
     theme(panel.grid.minor = element_blank()) +
-    facet_wrap(.~region, ncol = 2)
+    facet_wrap(.~region, ncol = 4)
 }
 
 plot_Se_over_time()
