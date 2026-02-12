@@ -2,8 +2,8 @@ library(here)
 library(tidyverse)
 library(rstan)
 
-load(here("Rout", "fit_06.RData"))  # loads 'fit', 'stan_data', 'site_levels', 'calendar'
-load(here("Rout", "stan_data_06.RData"))  # loads 'stan_data', 'calendar', 'site_levels', etc.
+load(here("Rout", "fit_09.RData"))  # loads 'fit', 'stan_data', 'site_levels', 'calendar'
+load(here("Rout", "stan_data_09.RData"))  # loads 'stan_data', 'calendar', 'site_levels', etc.
 
 s_idx <- 1  # Example province index for testing
 S <- stan_data$S
@@ -94,7 +94,7 @@ library(ggpubr)
 library(fs)
 
 # Create output directory if it doesn't exist
-dir_create("Plots/predictive_check/Model6")
+dir_create("Plots/predictive_check/Model9")
 # Collect plots in a list
 plot_list <- vector("list", S)
 for (s_idx in seq_len(S)) {
@@ -111,15 +111,15 @@ for (s_idx in seq_len(S)) {
 }
 
 # Arrange plots in 3x4 grids and export each page as PNG
-plots_per_page <- 12
+plots_per_page <- 9
 n_pages <- ceiling(S / plots_per_page)
 for (i in seq_len(n_pages)) {
   idx_start <- (i - 1) * plots_per_page + 1
   idx_end <- min(i * plots_per_page, S)
   plots_this_page <- plot_list[idx_start:idx_end]
-  arranged <- ggarrange(plotlist = plots_this_page, ncol = 4, nrow = 3)
+  arranged <- ggarrange(plotlist = plots_this_page, ncol = 3, nrow = 3)
   ggsave(
-    filename = sprintf("Plots/predictive_check/Model5/predictive_check_page%02d.png", i),
+    filename = sprintf("Plots/predictive_check/Model9/predictive_check_page%02d.png", i),
     plot = arranged,
     width = 16, height = 12, units = "in", dpi = 300
   )
