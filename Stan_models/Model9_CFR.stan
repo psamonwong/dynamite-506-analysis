@@ -27,9 +27,6 @@ data {
   array[T, S] int<lower=0> R_death_ts;            // Monthly total deaths
   array[Y, A, S] int<lower=0> R_death_yas;        // Annual age-stratified deaths
   array[Y, S] int<lower=0, upper=1> has_death_data_ys;  // 1 if age death data available
-  
-  // Susceptible proportions
-  int S_t;                            // Susceptible proportion (assumed constant)
 
   // === SEASONALITY ===
   int<lower=1> H;                 // Fourier harmonics (3)
