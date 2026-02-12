@@ -17,10 +17,10 @@ stan_data$S_t <- 1
 
 ##############################
 # MODEL FITTING
-iter <- getOption("stan.iter", 200)
-warmup <- getOption("stan.warmup", 100)
+iter <- getOption("stan.iter", 2000)
+warmup <- getOption("stan.warmup", 1000)
 chains <- getOption("stan.chains", 4)
-thin <- getOption("stan.thin", 1)
+thin <- getOption("stan.thin", 4)
 seed <- getOption("stan.seed", 124L)
 
 message(sprintf("Sampling: iter=%d warmup=%d chains=%d thin=%d", iter, warmup, chains, thin))
@@ -36,7 +36,7 @@ fit <- rstan::sampling(
   chains = chains, 
   thin = thin, 
   seed = seed, 
-  refresh = max(1, iter %/% 20),  # print progress every 1%
+  refresh = max(1, iter %/% 200),  # print progress every 1%
   control = list(adapt_delta = 0.95, max_treedepth = 12),
   init = function() init_fun(stan_data),
   pars = c(
