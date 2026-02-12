@@ -17,10 +17,10 @@ stan_data$S_t <- 1
 
 ##############################
 # MODEL FITTING
-iter <- getOption("stan.iter", 2000)
-warmup <- getOption("stan.warmup", 1000)
+iter <- getOption("stan.iter", 200)
+warmup <- getOption("stan.warmup", 100)
 chains <- getOption("stan.chains", 4)
-thin <- getOption("stan.thin", 4)
+thin <- getOption("stan.thin", 1)
 seed <- getOption("stan.seed", 124L)
 
 message(sprintf("Sampling: iter=%d warmup=%d chains=%d thin=%d", iter, warmup, chains, thin))
@@ -51,7 +51,7 @@ fit <- rstan::sampling(
     # === Force of infection === //
     "mu_log_lambda_0",
     "log_lambda_0_s",
-    "sigma_lambda_init",
+ #   "sigma_lambda_init",
     "epsilon_lambda_ys",
     "lambda_base_ys",
     "lambda_year_ys",

@@ -49,6 +49,7 @@ data {
   real<lower=0, upper=1> nu;       // Clinical manifestation probability
   real<lower=0> sigma_lambda_0;    // Baseline FOI variation (0.1 fixed)
   real<lower=0> sigma_lambda_y;    // Year-to-year FOI variation (0.122 fixed)
+  real<lower=0> sigma_lambda_init; // Initial FOI variation (0.75 fixed)
 }
 
 parameters{
@@ -88,9 +89,6 @@ parameters{
 
   // === SEROPREVALENCE ===
   array[S] real<lower=0> H0_s;     // Initial cumulative hazard
-
-  // === HYPERPARAMETERS ===
-  real<lower=0> sigma_lambda_init;  // Initial FOI variation
 }
 
 transformed parameters {
@@ -278,7 +276,6 @@ model {
     H0_s ~ exponential(1);
     
     epsilon_lambda_ys_init ~ normal(0, sigma_lambda_init);
-    sigma_lambda_init ~ exponential(10);
 
     for (y_ind in 1:(Y-1)) {
       epsilon_lambda_ys_innov[y_ind, ] ~ normal(0, sigma_lambda_y);
