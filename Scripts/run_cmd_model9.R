@@ -17,10 +17,10 @@ stan_data$S_t <- 1
 
 ##############################
 # MODEL FITTING
-iter <- getOption("stan.iter", 200)
-warmup <- getOption("stan.warmup", 100)
+iter <- getOption("stan.iter", 2000)
+warmup <- getOption("stan.warmup", 1000)
 chains <- getOption("stan.chains", 4)
-thin <- getOption("stan.thin", 1)
+thin <- getOption("stan.thin", 4)
 seed <- getOption("stan.seed", 124L)
 
 message(sprintf("Sampling: iter=%d warmup=%d chains=%d thin=%d", iter, warmup, chains, thin))
@@ -40,59 +40,62 @@ fit <- rstan::sampling(
   control = list(adapt_delta = 0.95, max_treedepth = 12),
   init = function() init_fun(stan_data),
   pars = c(
-    # Dispersion
+    # === Dispersion parameters === //
     "phi_case",
     "phi_death",
     
-    # Detection sensitivity
+    # === Detection sensitivity (essential for interpretation) === //
     "Se_y",
-    "Sp_y",
     "sigma_Se",
-    "logit_Se_init",
-    "logit_Se_innov",
     
-    # Force of infection - baseline
+    # === Force of infection === //
     "mu_log_lambda_0",
     "log_lambda_0_s",
     "sigma_lambda_init",
     "epsilon_lambda_ys",
     "lambda_base_ys",
+    "lambda_year_ys",
     
-    # Seasonality
+    # === Seasonality === //
     "a_cos",
     "a_sin",
-    "a_cos_base",
-    "a_sin_base",
     "tau_cos_base",
     "tau_sin_base",
     "sigma_delta_cos",
     "sigma_delta_sin",
     
-    # Age-specific susceptibility
-    "log_rho_pa",
+    # === Age-specific susceptibility === //
     "rho_pa",
     "sigma_rho",
     
-    # Case-Fatality Rate (NEW for Model 9)
+    # === Case-Fatality Rate === //
     "mu_logit_CFR",
-    "logit_CFR_pa_raw",
     "sigma_CFR",
     "CFR_pa",
     
-    # Expected cases
+    # === Posterior predictive checks === //
     "C_ts",
-    "C_tas",
-    "I_tas",
-    
-    # Expected deaths (NEW for Model 9)
     "D_ts",
-    "D_tas",
-    "D_yas",
     
-    # Seroprevalence
+    # === Seroprevalence === //
     "p_sero_s",
     "H0_s",
-    "lambda_year_ys"
+    
+    # === Log-likelihood (for LOO-IC/WAIC) === //
+    "log_lik_case",
+    "log_lik_death",
+    "log_lik_case_age",
+    "log_lik_death_age",
+    
+    # === Posterior predictive replicates === //
+    "R_case_ts_rep",
+    "R_death_ts_rep",
+    
+    # === Seasonality multipliers === //
+    "seasonal_multiplier",
+    
+    # === Diagnostics === //
+    "sum_log_lik"
   ),
   include = TRUE
 )

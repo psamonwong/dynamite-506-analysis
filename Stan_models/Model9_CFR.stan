@@ -1,102 +1,96 @@
 data {
-    // Dimensions
-    int<lower=1> T;                 // Number of months = Y * M
-    int<lower=1> Y;                 // number of years
-    int<lower=1> M;                 // number of months per year
-    int<lower=1> P;                 // number of period blocks
-    int<lower=1> S;                 // number of provinces
-    int<lower=1> R;                 // number of regions
-    int<lower=1> A;                 // number of age groups
-    int<lower=1> K_sero;            // number of serology measurement years (2007, 2008, and 2012 = 3)
+    // === DIMENSIONS ===
+    int<lower=1> T;                 // Total months (264 = 22 years × 12 months)
+    int<lower=1> Y;                 // Years (22: 2003-2024)
+    int<lower=1> M;                 // Months per year (12)
+    int<lower=1> P;                 // Period blocks (4)
+    int<lower=1> S;                 // Provinces (77)
+    int<lower=1> R;                 // Regions (13)
+    int<lower=1> A;                 // Age groups (8)
+    int<lower=1> K_sero;            // Serology years (3: 2007, 2008, 2012)
     
-  // Mappings
-  array[T] int<lower=1, upper=Y> year_id;         // y(t): year corresponding to month t
-  array[T] int<lower=1, upper=M> month_id;        // m(t): month corresponding to month t
-  array[Y] int<lower=1, upper=P> period_id;       // p(y(t)): period block corresponding to month t
-  array[S] int<lower=1, upper=R> region_id;       // r(s): region corresponding to province s
+  // === MAPPINGS ===
+  array[T] int<lower=1, upper=Y> year_id;         // Year for each month
+  array[T] int<lower=1, upper=M> month_id;        // Month (1-12) for each time
+  array[Y] int<lower=1, upper=P> period_id;       // Period block (1-4) per year
+  array[S] int<lower=1, upper=R> region_id;       // Region per province
 
-  // Population size
-  array[T, A, S] int<lower=0> N_tas;          // Population size at time t, age a, province s
+  // === POPULATION ===
+  array[T, A, S] int<lower=0> N_tas;              // Population by time, age, province
   
-  // Reported cases
-  array[T, S] int<lower=0> R_case_ts;              // Monthly total cases (aggregated over age)
+  // === OBSERVED CASES ===
+  array[T, S] int<lower=0> R_case_ts;             // Monthly total cases
   array[Y, A, S] int<lower=0> R_case_yas;         // Annual age-stratified cases
-  array[Y, S] int<lower=0, upper=1> has_age_data_ys;  // Indicator: 1 if age-stratified data available for year y, province s
+  array[Y, S] int<lower=0, upper=1> has_age_data_ys;  // 1 if age case data available
   
-  // Reported deaths
-  array[T, S] int<lower=0> R_death_ts;             // Monthly total deaths (aggregated over age)
+  // === OBSERVED DEATHS (Model 9 core) ===
+  array[T, S] int<lower=0> R_death_ts;            // Monthly total deaths
   array[Y, A, S] int<lower=0> R_death_yas;        // Annual age-stratified deaths
-  array[Y, S] int<lower=0, upper=1> has_death_data_ys;  // Indicator: 1 if age-stratified death data available
+  array[Y, S] int<lower=0, upper=1> has_death_data_ys;  // 1 if age death data available
   
   // Susceptible proportions
   int S_t;                            // Susceptible proportion (assumed constant)
 
-  // Seasonality configurations
-  int<lower=1> H;                 // number of Fourier harmonics
-  matrix[T, H] cos_t_h;           // Precomputed cosine basis [T x H] for each time point
-  matrix[T, H] sin_t_h;           // Precomputed sine basis [T x H] for each time point
+  // === SEASONALITY ===
+  int<lower=1> H;                 // Fourier harmonics (3)
+  matrix[T, H] cos_t_h;           // Cosine basis [T x H]
+  matrix[T, H] sin_t_h;           // Sine basis [T x H]
 
-  // Reference age group for susceptibility and CFR
-  int<lower=1, upper=A> ref_age;  // Reference age group index (1 to A)
+  // === REFERENCE ===
+  int<lower=1, upper=A> ref_age;  // Reference age for relative susceptibility
 
-  // Serology data
-  array[S] real<lower=0, upper=1> sero_lower_s;
-  array[S] real<lower=0, upper=1> sero_upper_s;
-  array[K_sero] int sero_year_id;
+  // === SEROLOGY DATA ===
+  array[S] real<lower=0, upper=1> sero_lower_s;  // Seroprevalence lower bound
+  array[S] real<lower=0, upper=1> sero_upper_s;  // Seroprevalence upper bound
+  array[K_sero] int sero_year_id;                 // Years with serology surveys
 
-  // Immune waning rate
-  real<lower=0> omega;
-
-  // Clinical fraction
-  real<lower=0, upper=1> nu;
-  
-  // Fixed hyperparameter for baseline FOI variation across provinces
-  real<lower=0> sigma_lambda_0;
-  
-  // Fixed year-to-year FOI variation
-  real<lower=0> sigma_lambda_y;
+  // === FIXED PARAMETERS ===
+  real<lower=0> omega;             // Immune waning rate
+  real<lower=0, upper=1> nu;       // Clinical manifestation probability
+  real<lower=0> sigma_lambda_0;    // Baseline FOI variation (0.1 fixed)
+  real<lower=0> sigma_lambda_y;    // Year-to-year FOI variation (0.122 fixed)
 }
 
 parameters{
-  // === Dispersion parameters === //
-  real<lower=0> phi_case;               // Dispersion for monthly case totals
-  real<lower=0> phi_death;              // Dispersion for monthly death totals
+  // === DISPERSION (NegBinom k) ===
+  real<lower=0> phi_case;          // Case overdispersion
+  real<lower=0> phi_death;         // Death overdispersion
   
-  // === Test sensitivity and specificity parameters === //
-  array[R] real logit_Se_init;
-  array[R, Y-1] real logit_Se_innov;
-  real<lower=0> sigma_Se;
+  // === DETECTION SENSITIVITY (RW by region-year) ===
+  array[R] real logit_Se_init;     // Initial logit(Se)
+  array[R, Y-1] real logit_Se_innov;  // Year innovations
+  real<lower=0> sigma_Se;          // Innovation SD
 
-  // === Force of infection parameters === //
-  real mu_log_lambda_0;
-  array[S] real log_lambda_0_s;
-  array[S] real epsilon_lambda_ys_init;
-  array[Y-1, S] real epsilon_lambda_ys_innov;
+  // === FORCE OF INFECTION (RW by province-year) ===
+  real mu_log_lambda_0;            // Global mean log-FOI
+  array[S] real log_lambda_0_s;    // Province baseline
+  array[S] real epsilon_lambda_ys_init;  // Initial innovations
+  array[Y-1, S] real epsilon_lambda_ys_innov;  // Year innovations
 
-  // Seasonal variation parameters (baseline + period deviations)
-  array[H, S] real a_cos_base;
-  array[H, S] real a_sin_base;
-  array[H, P, S] real delta_cos_raw;
-  array[H, P, S] real delta_sin_raw;
-  
-  array[S] real<lower=0> tau_cos_base;
-  array[S] real<lower=0> tau_sin_base;
-  array[P] real<lower=0> sigma_delta_cos;
-  array[P] real<lower=0> sigma_delta_sin;
+  // === SEASONALITY (Fourier + period effects) ===
+  array[H, S] real a_cos_base;     // Baseline cosine
+  array[H, S] real a_sin_base;     // Baseline sine
+  array[H, P, S] real delta_cos_raw;  // Period deviations (cos)
+  array[H, P, S] real delta_sin_raw;  // Period deviations (sin)
+  array[S] real<lower=0> tau_cos_base;  // Baseline variance (cos)
+  array[S] real<lower=0> tau_sin_base;  // Baseline variance (sin)
+  array[P] real<lower=0> sigma_delta_cos;  // Period SD (cos)
+  array[P] real<lower=0> sigma_delta_sin;  // Period SD (sin)
 
-  // === Age-specific susceptibility === //
-  array[P, A] real log_rho_pa;            // log relative susceptibility by age group and period
-  real<lower=0> sigma_rho;                // SD for age effects across periods
+  // === AGE-SPECIFIC SUSCEPTIBILITY ===
+  array[P, A] real log_rho_pa;     // Log susceptibility (relative to ref_age)
+  real<lower=0> sigma_rho;         // Between-period variation
 
-  // === Case-Fatality Rate (CFR) by period-age === //
-  array[P, A] real logit_CFR_pa_raw;      // logit CFR deviations by period and age
-  real<lower=0> sigma_CFR;                // SD for CFR effects across periods
-  real mu_logit_CFR;                      // Mean logit-CFR (hyperprior)
+  // === CASE-FATALITY RATE (Model 9 core) ===
+  array[P, A] real logit_CFR_pa_raw;  // CFR deviations
+  real<lower=0> sigma_CFR;            // CFR variation
+  real mu_logit_CFR;                  // Mean logit-CFR prior (~5%)
 
-  array[S] real<lower=0> H0_s;
+  // === SEROPREVALENCE ===
+  array[S] real<lower=0> H0_s;     // Initial cumulative hazard
 
-  // === Hyperparameters === //
-  real<lower=0> sigma_lambda_init;
+  // === HYPERPARAMETERS ===
+  real<lower=0> sigma_lambda_init;  // Initial FOI variation
 }
 
 transformed parameters {
@@ -176,29 +170,23 @@ transformed parameters {
     lambda_base_ys[y_ind, ] = exp(to_row_vector(log_lambda_0_s) + epsilon_lambda_ys[y_ind, ]);
   }
 
-  // === Age-specific susceptibility (constraint: reference age = 1) === //
+  // === Age-specific susceptibility: normalize to ref_age = 1 ===
   for(p_ind in 1:P){
     for(a_ind in 1:A){
       rho_pa[p_ind, a_ind] = exp(log_rho_pa[p_ind, a_ind]);
     }
-    // Normalize: set reference age group to rho = 1
     real ref_rho = rho_pa[p_ind, ref_age];
     for(a_ind in 1:A){
-      rho_pa[p_ind, a_ind] = rho_pa[p_ind, a_ind] / ref_rho;
+      rho_pa[p_ind, a_ind] = rho_pa[p_ind, a_ind] / ref_rho;  // Constraint
     }
   }
 
-  // === Case-Fatality Rate (CFR) by period-age (constraint: reference age = 1) === //
+  // === CFR: absolute probability [0,1] by period-age ===
+  // inv_logit naturally constrains; no reference normalization
   for(p_ind in 1:P){
     for(a_ind in 1:A){
       CFR_pa[p_ind, a_ind] = inv_logit(mu_logit_CFR + sigma_CFR * logit_CFR_pa_raw[p_ind, a_ind]);
     }
-    // Normalize: set reference age group to CFR = 1 (proportional adjustment)
-    // real ref_CFR = CFR_pa[p_ind, ref_age];
-    // for(a_ind in 1:A){
-    //   CFR_pa[p_ind, a_ind] = CFR_pa[p_ind, a_ind] / ref_CFR;
-    //   CFR_pa[p_ind, a_ind] = fmin(CFR_pa[p_ind, a_ind], 0.99);  // Cap at 99%
-    // }
   }
 
   // === Force of infection by time and site (using precomputed Fourier basis) === //
@@ -215,9 +203,10 @@ transformed parameters {
     }
   }
 
-  // === Latent true clinical cases and deaths (age-stratified, monthly) === //
-  // I_{t,a,s} = nu * N_{t,a,s} * (1 - exp(-lambda_{t,a,s}))
-  // D_{t,a,s} = C_{t,a,s} * CFR_{p(t),a}
+  // === Latent cases: I -> C -> D chain ===
+  // I = clinical cases (age-adjusted FOI)
+  // C = detected cases (I × sensitivity)
+  // D = deaths (C × period-age CFR)
   for(t_ind in 1:T){
     int y_ind = year_id[t_ind];
     int p_ind = period_id[y_ind];
@@ -280,7 +269,7 @@ transformed parameters {
 }
 
 model {
-    // === Priors === //
+    // === PRIORS ===
     phi_case ~ normal(6, 1);
     phi_death ~ normal(3, 1);
 
@@ -331,23 +320,23 @@ model {
       log_rho_pa[p_ind, ] ~ normal(0, sigma_rho);
     }
 
-    // CFR priors (similar to age susceptibility)
-    mu_logit_CFR ~ normal(logit(0.05), 1);  // Prior around 5% baseline CFR
+    // CFR priors
+    mu_logit_CFR ~ normal(logit(0.05), 1);  // Prior ~5% baseline CFR
     sigma_CFR ~ exponential(1);
     for(p_ind in 1:P){
       logit_CFR_pa_raw[p_ind, ] ~ std_normal();
     }
 
-    // === Likelihoods === //
-    // Monthly case totals: negative binomial (vectorized per row)
+    // === LIKELIHOODS ===
+    // Monthly case totals: NegBinom(mean=expected, dispersion=phi_case)
     for(t_ind in 1:T)
-      R_case_ts[t_ind, ] ~ neg_binomial_2(C_ts[t_ind, ], phi_case);
+      R_case_ts[t_ind, ] ~ neg_binomial_2(C_ts[t_ind, ] + 1e-10, phi_case);
 
-    // Monthly death totals: negative binomial (vectorized per row)
+    // Monthly death totals: NegBinom
     for(t_ind in 1:T)
-      R_death_ts[t_ind, ] ~ neg_binomial_2(D_ts[t_ind, ], phi_death);
+      R_death_ts[t_ind, ] ~ neg_binomial_2(D_ts[t_ind, ] + 1e-10, phi_death);
 
-    // Annual age-stratified cases: multinomial (only when data available)
+    // Annual age-stratified cases: Multinomial (when age data available)
     for(y_ind in 1:Y){
       for(s_ind in 1:S){
         if(has_age_data_ys[y_ind, s_ind]){
@@ -357,7 +346,7 @@ model {
             q_case_yas[a_ind] = C_yas[y_ind, a_ind, s_ind];
             N_case_ys += R_case_yas[y_ind, a_ind, s_ind];
           }
-          if(N_case_ys > 0){
+          if(N_case_ys > 0 && sum(q_case_yas) > 0){
             q_case_yas = q_case_yas / sum(q_case_yas);  // Normalize to proportions
             R_case_yas[y_ind, , s_ind] ~ multinomial(q_case_yas);
           }
@@ -365,7 +354,7 @@ model {
       }
     }
 
-    // Annual age-stratified deaths: multinomial (only when data available)
+    // Annual age-stratified deaths: Multinomial (when age-death data available) [Model 9]
     for(y_ind in 1:Y){
       for(s_ind in 1:S){
         if(has_death_data_ys[y_ind, s_ind]){
@@ -375,7 +364,7 @@ model {
             q_death_yas[a_ind] = D_yas[y_ind, a_ind, s_ind];
             N_death_ys += R_death_yas[y_ind, a_ind, s_ind];
           }
-          if(N_death_ys > 0){
+          if(N_death_ys > 0 && sum(q_death_yas) > 0){
             q_death_yas = q_death_yas / sum(q_death_yas);  // Normalize to proportions
             R_death_yas[y_ind, , s_ind] ~ multinomial(q_death_yas);
           }
@@ -394,8 +383,105 @@ model {
 }
 
 generated quantities {
-  // === Reconstruct seasonal multipliers for posterior inference === //
-  array[M, P, S] real seasonal_multiplier;
+  // === LOG-LIKELIHOOD (for LOO-IC/WAIC model comparison) ===
+  vector[T] log_lik_case;           // Per-month log-lik (cases)
+  vector[T] log_lik_death;          // Per-month log-lik (deaths) [Model 9]
+  vector[Y * S] log_lik_case_age;   // Annual age-stratified (cases)
+  vector[Y * S] log_lik_death_age;  // Annual age-stratified (deaths) [Model 9]
+  
+  // === POSTERIOR PREDICTIVE CHECKS ===
+  array[T, S] int R_case_ts_rep;    // Simulated cases (for PPC)
+  array[T, S] int R_death_ts_rep;   // Simulated deaths (for PPC) [Model 9]
+  
+  // === SEASONALITY EFFECTS ===
+  array[M, P, S] real seasonal_multiplier;  // exp(Fourier terms)
+  
+  // === DIAGNOSTICS ===
+  real sum_log_lik;                 // Total log-likelihood
+  
+  // Initialize
+  sum_log_lik = 0;
+  
+  // === Compute log-likelihoods === //
+  for(t_ind in 1:T){
+    // Case log-likelihood
+    log_lik_case[t_ind] = neg_binomial_2_lpmf(R_case_ts[t_ind, 1] | C_ts[t_ind, 1] + 1e-10, phi_case);
+    for(s_ind in 2:S){
+      log_lik_case[t_ind] += neg_binomial_2_lpmf(R_case_ts[t_ind, s_ind] | C_ts[t_ind, s_ind] + 1e-10, phi_case);
+    }
+    
+    // Death log-likelihood
+    log_lik_death[t_ind] = neg_binomial_2_lpmf(R_death_ts[t_ind, 1] | D_ts[t_ind, 1] + 1e-10, phi_death);
+    for(s_ind in 2:S){
+      log_lik_death[t_ind] += neg_binomial_2_lpmf(R_death_ts[t_ind, s_ind] | D_ts[t_ind, s_ind] + 1e-10, phi_death);
+    }
+    
+    sum_log_lik += log_lik_case[t_ind] + log_lik_death[t_ind];
+  }
+  
+  // Age-stratified case log-likelihood
+  {
+    int idx = 1;
+    for(y_ind in 1:Y){
+      for(s_ind in 1:S){
+        if(has_age_data_ys[y_ind, s_ind]){
+          vector[A] q_case_yas;
+          real N_case_ys = 0;
+          for(a_ind in 1:A){
+            q_case_yas[a_ind] = C_yas[y_ind, a_ind, s_ind];
+            N_case_ys += R_case_yas[y_ind, a_ind, s_ind];
+          }
+          if(N_case_ys > 0 && sum(q_case_yas) > 0){
+            q_case_yas = q_case_yas / sum(q_case_yas);
+            log_lik_case_age[idx] = multinomial_lpmf(R_case_yas[y_ind, , s_ind] | q_case_yas);
+            sum_log_lik += log_lik_case_age[idx];
+          } else {
+            log_lik_case_age[idx] = 0;
+          }
+        } else {
+          log_lik_case_age[idx] = 0;
+        }
+        idx += 1;
+      }
+    }
+  }
+  
+  // Age-stratified death log-likelihood
+  {
+    int idx = 1;
+    for(y_ind in 1:Y){
+      for(s_ind in 1:S){
+        if(has_death_data_ys[y_ind, s_ind]){
+          vector[A] q_death_yas;
+          real N_death_ys = 0;
+          for(a_ind in 1:A){
+            q_death_yas[a_ind] = D_yas[y_ind, a_ind, s_ind];
+            N_death_ys += R_death_yas[y_ind, a_ind, s_ind];
+          }
+          if(N_death_ys > 0 && sum(q_death_yas) > 0){
+            q_death_yas = q_death_yas / sum(q_death_yas);
+            log_lik_death_age[idx] = multinomial_lpmf(R_death_yas[y_ind, , s_ind] | q_death_yas);
+            sum_log_lik += log_lik_death_age[idx];
+          } else {
+            log_lik_death_age[idx] = 0;
+          }
+        } else {
+          log_lik_death_age[idx] = 0;
+        }
+        idx += 1;
+      }
+    }
+  }
+  
+  // === Posterior predictive replicates === //
+  for(t_ind in 1:T){
+    for(s_ind in 1:S){
+      R_case_ts_rep[t_ind, s_ind] = neg_binomial_2_rng(C_ts[t_ind, s_ind] + 1e-10, phi_case);
+      R_death_ts_rep[t_ind, s_ind] = neg_binomial_2_rng(D_ts[t_ind, s_ind] + 1e-10, phi_death);
+    }
+  }
+  
+  // === Seasonal multipliers === //
   for(m_ind in 1:M){
     for(p_ind in 1:P){
       for(s_ind in 1:S){

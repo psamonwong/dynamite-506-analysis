@@ -17,8 +17,8 @@ population_data <- read_csv(here("Analysis_data", "Population", "population_data
 sero_data <- read_csv(here("Analysis_data", "Gonwong_sero_data.csv"))
 
 # Setup
-area <- #case_data %>% distinct(Area) %>% pull(Area)
-c( "Chiang Rai", "Lampang",  "Nakhon Ratchasima", "Surin", "Songkhla", "Phatthalung", "Uttaradit", "Tak")
+area <- case_data %>% distinct(Area) %>% pull(Area)
+#c( "Chiang Rai", "Lampang",  "Nakhon Ratchasima", "Surin", "Songkhla", "Phatthalung", "Uttaradit", "Tak")
 
 start_year <- 2003
 end_year   <- 2024
