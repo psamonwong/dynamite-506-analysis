@@ -328,7 +328,7 @@ model {
     }
 
     // === LIKELIHOODS ===
-    // Monthly case totals: NegBinom(mean=expected, dispersion=phi_case)
+    // Monthly case totals: NegBinom
     for(t_ind in 1:T)
       R_case_ts[t_ind, ] ~ neg_binomial_2(C_ts[t_ind, ] + 1e-10, phi_case);
 
@@ -339,14 +339,14 @@ model {
     // Annual age-stratified cases: Multinomial (when age data available)
     for(y_ind in 1:Y){
       for(s_ind in 1:S){
-        if(has_age_data_ys[y_ind, s_ind]){
+        if(has_age_data_ys[y_ind, s_ind]){ // Check if age data available
           vector[A] q_case_yas;
           int N_case_ys = 0;
           for(a_ind in 1:A){
             q_case_yas[a_ind] = C_yas[y_ind, a_ind, s_ind];
             N_case_ys += R_case_yas[y_ind, a_ind, s_ind];
           }
-          if(N_case_ys > 0 && sum(q_case_yas) > 0){
+          if(N_case_ys > 0 && sum(q_case_yas) > 0){ // Only model if there are observed cases and expected > 0
             q_case_yas = q_case_yas / sum(q_case_yas);  // Normalize to proportions
             R_case_yas[y_ind, , s_ind] ~ multinomial(q_case_yas);
           }
@@ -354,17 +354,17 @@ model {
       }
     }
 
-    // Annual age-stratified deaths: Multinomial (when age-death data available) [Model 9]
+    // Annual age-stratified deaths: Multinomial (when age-death data available)
     for(y_ind in 1:Y){
       for(s_ind in 1:S){
-        if(has_death_data_ys[y_ind, s_ind]){
+        if(has_death_data_ys[y_ind, s_ind]){ // Check if age-death data available
           vector[A] q_death_yas;
           int N_death_ys = 0;
           for(a_ind in 1:A){
             q_death_yas[a_ind] = D_yas[y_ind, a_ind, s_ind];
             N_death_ys += R_death_yas[y_ind, a_ind, s_ind];
           }
-          if(N_death_ys > 0 && sum(q_death_yas) > 0){
+          if(N_death_ys > 0 && sum(q_death_yas) > 0){ // Only model if there are observed deaths and expected > 0
             q_death_yas = q_death_yas / sum(q_death_yas);  // Normalize to proportions
             R_death_yas[y_ind, , s_ind] ~ multinomial(q_death_yas);
           }
@@ -372,7 +372,7 @@ model {
       }
     }
 
-    // Seroprevalence likelihood: interval-censored normal
+    // Seroprevalence likelihood: interval-censored normal 
     for(s_ind in 1:S){
       real sigma_sero = 0.01;
       target += log_diff_exp(
