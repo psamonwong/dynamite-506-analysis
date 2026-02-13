@@ -33,6 +33,7 @@ library(scales)
 library(ggrepel)
 library(ggspatial)
 library(ggh4x)
+library(cowplot)
 
 source(here("Scripts", "data_prep_functions.R"))
 source(here("Scripts", "plot_functions.R"))
@@ -171,20 +172,56 @@ if(export_plot){
 
 ```{r fig1-health region map}
 #| label: fig1-health-region-map
-g_health_region_map <- plot_health_regions(map_data, base_size = 14)
+g_health_region_map <- plot_health_regions(map_data, base_size = 14, title = "")
 print(g_health_region_map)
 ```
 
 ```{r fig1-reported-data}
 #| label: fig1-reported-data
-g_reported_data <- plot_case_death(case_data, base_size = 14)
-print(g_reported_data)
+g_reported_case <- plot_case_bar(case_data, base_size = 14)
+print(g_reported_case)
+```
+
+```{r fig1-reported-death}
+#| label: fig1-reported-death
+g_reported_death <- plot_death_bar(case_data, base_size = 14)
+print(g_reported_death)
+```
+
+```{r fig1-map}
+#| label: fig1-map
+g_area_cases_map <- plot_area_cases_map(case_data, map_data)
+print(g_area_cases_map)
+```
+
+```{r fig1-map2}
+#| label: fig1-map2
+g_area_death_map <- plot_area_deaths_map(case_data, map_data)
+print(g_area_death_map)
+```
+
+```{r fig1-age-distribution}
+g_age_distribution <- plot_agegroup_proportion(case_age_data)
+print(g_age_distribution)
+```
+
+```{r export-fig1}
+top_row <- plot_grid(g_health_region_map, g_area_cases_map, g_area_death_map,
+                     nrow = 1, rel_widths = c(1, 1, 1), align = "h", labels = c("A", "B", "C"))
+bot_row <- plot_grid(g_age_distribution, g_reported_case, g_reported_death,
+                     nrow = 1, rel_widths = c(1, 1, 1), align = "h", labels = c("D", "E", "F"))
+combined <- plot_grid(top_row, bot_row, ncol = 1, rel_heights = c(2, 1))
+
+png(here("Plots", "Figure1.png"), width = 15, height = 10, units = "in", res = 300)
+combined
+dev.off()
 ```
 
 
 
 
 
+.
 
 
 
