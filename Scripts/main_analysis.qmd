@@ -28,12 +28,22 @@ library(rstan)
 library(ggpubr)
 library(scales)
 library(knitr)
+library(sf)
+library(scales)
+library(ggrepel)
+library(ggspatial)
+library(ggh4x)
 
 source(here("Scripts", "data_prep_functions.R"))
 source(here("Scripts", "plot_functions.R"))
 
-dataset <- "Partial"
+dataset <- "Full"
+
 case_data <- load_case_data()
+case_age_data <- load_case_age_data()
+population_data <- load_population_data()
+sero_data <- load_sero_data()
+map_data <- st_read(here("Analysis_data", "thailand_map.shp"))
 ```
 
 ```{r data-config}
@@ -119,10 +129,10 @@ cat(sprintf("  Harmonics (H): %d\n", stan_data$H))
 
 ```{r model-settings}
 model_settings <- data.frame(
-  iter = getOption("stan.iter", 200),
-  warmup = getOption("stan.warmup", 100),
+  iter = getOption("stan.iter", 2000),
+  warmup = getOption("stan.warmup", 1000),
   chains = getOption("stan.chains", 4),
-  thin = getOption("stan.thin", 1),
+  thin = getOption("stan.thin", 4),
   seed = getOption("stan.seed", 124L)
 )
 
@@ -132,6 +142,7 @@ save(model_settings, model_file, file = here("Rout", paste("model_settings_", da
 ```
 
 Model Fitting
+
 ```{r model-fitting}
 RUN_MODEL <- F
 if(RUN_MODEL){
@@ -141,28 +152,34 @@ if(RUN_MODEL){
 
 ## Model diagnostics
 
+```{r load-fit}
+#| label: load-fit
+load(here("Rout", paste0("fit_", dataset, ".RData")))
+export_plot <- F
+```
+
 ```{r traceplots}
 #| label: traceplots
-export_traceplots(dataset)
-
+if(export_plot){
+  export_traceplots(dataset)
+  }
 ```
 
+## Figure 1: Study overview
 
+### 1.1 Heath region map
 
-
-
-## Plotting and Analysis
-### 1. Study overview
-
-```{r-Figure 1: study-overview}
-
-
+```{r fig1-health region map}
+#| label: fig1-health-region-map
+g_health_region_map <- plot_health_regions(map_data, base_size = 14)
+print(g_health_region_map)
 ```
 
-
-
-
-
+```{r fig1-reported-data}
+#| label: fig1-reported-data
+g_reported_data <- plot_case_death(case_data, base_size = 14)
+print(g_reported_data)
+```
 
 
 
