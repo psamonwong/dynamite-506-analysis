@@ -211,14 +211,18 @@ top_row <- plot_grid(g_health_region_map, g_area_cases_map, g_area_death_map,
 bot_row <- plot_grid(g_age_distribution, g_reported_case, g_reported_death,
                      nrow = 1, rel_widths = c(1, 1, 1), align = "h", labels = c("D", "E", "F"))
 combined <- plot_grid(top_row, bot_row, ncol = 1, rel_heights = c(2, 1))
+print(combined)
 
+```
+
+```{r}
+if(export_plot){
 png(here("Plots", "Figure1.png"), width = 15, height = 10, units = "in", res = 300)
 combined
 dev.off()
+}
+
 ```
-
-
-
 
 
 .
