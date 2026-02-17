@@ -34,6 +34,8 @@ library(ggrepel)
 library(ggspatial)
 library(ggh4x)
 library(cowplot)
+library(patchwork)
+
 
 source(here("Scripts", "data_prep_functions.R"))
 source(here("Scripts", "plot_functions.R"))
@@ -221,8 +223,75 @@ png(here("Plots", "Figure1.png"), width = 15, height = 10, units = "in", res = 3
 combined
 dev.off()
 }
-
 ```
+
+### Figure 2: Estimated FOI by province
+
+```{r}
+lambda_data <- extract_lambda_base()
+```
+
+```{r}
+g_FOI <-  plot_foi_trends_inc_groups(
+  lambda_data,
+  highlight_combos = c("> 1000-< 100",
+                       "> 1000-100-1000", 
+                       "> 1000-> 1000",
+                       "< 100-> 1000", 
+                       "< 100-100-1000", 
+                       "100-1000-> 1000",
+                       "100-1000-100-1000", 
+                       "100-1000-< 100") 
+)
+print(g_FOI)
+```
+
+```{r}
+p_bivar <- make_bivar_map(
+            lambda_data, 
+            map_data, 
+            year0 = 2003, year1 = 2024, 
+            legend_bbox = c(xmin = 101.0, xmax = 105.3, ymin = 7.5, ymax = 11.7),
+            pal = "DkBlue", 
+            subtitle = "")
+print(p_bivar)
+```
+
+```{r}
+g_FOI_map <- g_FOI +
+  p_bivar +
+  plot_layout(widths = c(3.5, 1.5)) +                  # increase map share; tune as needed
+  plot_annotation(theme = theme(plot.margin = margin(0, 0, 0, 0)))
+
+# remove extra plot margins on each component (the main cause of the gap)
+g_FOI_map <- g_FOI_map &
+  theme(plot.margin = margin(0.1, 0.1, 0.1, 0.1))
+
+g_FOI_map
+```
+
+```{r}
+if(export_plot){
+png(here("Plots", "Figure2_map.png"), width = 15, height = 10, units = "in", res = 300)
+print(g_FOI_map)
+dev.off()
+}
+```
+
+
+
+
+
+
+```{r}
+if(export_plot){
+png(here("Plots", "Figure2.png"), width = 12, height = 8, units = "in", res = 300)
+print(g_FOI)
+dev.off()
+}
+```
+
+
 
 
 .

@@ -234,3 +234,314 @@ plot_agegroup_proportion <- function(case_age_data) {
 }
 
 
+#############################################################################
+extract_lambda_base <- function(probs = c(0.025, 0.5, 0.975)) {
+  stopifnot(exists("fit"), exists("stan_data"), exists("site_levels"), exists("calendar"))
+  S <- stan_data$S
+  Y <- stan_data$Y
+  R <- stan_data$R
+
+  # Extract lambda_base_ys draws [Y, S]
+  lambda_mat <- as.matrix(fit, pars = "lambda_base_ys")
+  if (is.null(colnames(lambda_mat))) stop("lambda_base_ys columns have no names; re-run sampling with pars='lambda_base_ys'.")
+
+  # Parse indices from column names [y,s]
+  idx <- stringr::str_match(colnames(lambda_mat), "lambda_base_ys\\[(\\d+),(\\d+)\\]")
+  if (any(is.na(idx))) stop("Failed to parse lambda_base_ys indices from column names.")
+  y_idx_col <- as.integer(idx[, 2])
+  s_idx_col <- as.integer(idx[, 3])
+
+  # Create parameter map
+  param_map <- tibble::tibble(
+    par = colnames(lambda_mat),
+    y_idx = y_idx_col,
+    s_idx = s_idx_col
+  )
+
+  # Convert to long format
+  lambda_long <- tibble::as_tibble(lambda_mat) |>
+    dplyr::mutate(.draw = dplyr::row_number()) |>
+    tidyr::pivot_longer(cols = -.draw, names_to = "par", values_to = "lambda_base") |>
+    dplyr::left_join(param_map, by = "par")
+
+  # Summarize by year and province
+  lambda_summ <- lambda_long |>
+    dplyr::group_by(y_idx, s_idx) |>
+    dplyr::summarize(
+      mean = mean(lambda_base),
+      q025 = 12*stats::quantile(lambda_base, probs[1], names = FALSE),
+      q500 = 12*stats::quantile(lambda_base, probs[2], names = FALSE),
+      q975 = 12*stats::quantile(lambda_base, probs[3], names = FALSE),
+      .groups = "drop"
+    ) |>
+    dplyr::mutate(
+      province = site_levels[s_idx],
+      year = min(calendar$year) + y_idx - 1  # Map y_idx to actual year
+    )
+
+  # Extract region info from stan_data
+  region_id <- stan_data$region_id  # [S] province to region mapping
+  region_map <- tibble::tibble(
+    s_idx = seq_len(S),
+    r_idx = region_id[s_idx],
+    region = paste0("Zone", sprintf("%02d", region_id[s_idx]))
+  )
+  
+  lambda_summ <- lambda_summ |>
+    dplyr::left_join(region_map, by = "s_idx")
+
+  lambda_summ
+}
+################################################################################
+  # Helper: convert Zone to Health Region
+  zone_to_hr <- function(z) {
+    z_num <- as.integer(sub("Zone0?", "", z))
+    if (z_num %in% c(4, 13)) return("Health Region 4 and 13")
+    paste0("Health Region ", z_num)
+  }
+
+
+plot_foi_trends_inc_groups <- function(lambda_data,
+                                       inc_breaks = c(-Inf, 100, 1000, Inf),
+                                       inc_labels = c("< 100", "100-1000", "> 1000"),
+                                       highlight_combos = c("100-1000-> 1000", "> 1000-> 1000", "> 1000-> 100-1000"),
+                                       grey_combo = "Other") {
+  stopifnot(length(inc_breaks) == length(inc_labels) + 1)
+
+  # Province abbreviation lookup
+  abbr_lookup <- c(
+    "Amnat Charoen" = "ACR", "Ang Thong" = "ATG", "Bangkok" = "BKK",
+    "Bueng Kan" = "BKN", "Bungkan" = "BKN",
+    "Buri Ram" = "BRM", "Chachoengsao" = "CCO",
+    "Chai Nat" = "CNT", "Chaiyaphum" = "CPM", "Chanthaburi" = "CTI",
+    "Chiang Mai" = "CMI", "Chiang Rai" = "CRI", "Chon Buri" = "CBI",
+    "Chumphon" = "CPN", "Kalasin" = "KSN", "Kamphaeng Phet" = "KPT",
+    "Kanchanaburi" = "KRI", "Khon Kaen" = "KKN", "Krabi" = "KBI",
+    "Lampang" = "LPG", "Lamphun" = "LPN", "Loei" = "LEI",
+    "Lopburi" = "LRI", "Lop Buri" = "LRI",
+    "Mae Hong Son" = "MSN", "Maha Sarakham" = "MKM",
+    "Mukdahan" = "MDH", "Nakhon Nayok" = "NYK", "Nakhon Pathom" = "NPT",
+    "Nakhon Phanom" = "NPM", "Nakhon Ratchasima" = "NMA",
+    "Nakhon Sawan" = "NSN", "Nakhon Si Thammarat" = "NRT",
+    "Nan" = "NAN", "Narathiwat" = "NWT", "Nong Bua Lam Phu" = "NBP",
+    "Nong Khai" = "NKI", "Nonthaburi" = "NBI", "Pathum Thani" = "PTE",
+    "Pattani" = "PTN",
+    "Phang Nga" = "PNA", "Phangnga" = "PNA",
+    "Phatthalung" = "PLG",
+    "Phayao" = "PYO", "Phetchabun" = "PNB", "Phetchaburi" = "PBI",
+    "Phichit" = "PCT", "Phitsanulok" = "PLK",
+    "P.Nakhon S.Ayutthaya" = "AYA", "Phra Nakhon Si Ayutthaya" = "AYA",
+    "Phrae" = "PRE", "Phuket" = "PKT",
+    "Prachinburi" = "PRI", "Prachin Buri" = "PRI",
+    "Prachuap Khiri Khan" = "PKN", "Ranong" = "RNG", "Ratchaburi" = "RBR",
+    "Rayong" = "RYG", "Roi Et" = "RET", "Sa Kaeo" = "SKW",
+    "Sakon Nakhon" = "SNK", "Samut Prakan" = "SPK", "Samut Sakhon" = "SKN",
+    "Samut Songkhram" = "SKM", "Saraburi" = "SRI", "Satun" = "STN",
+    "Sing Buri" = "SBR", "Si Sa Ket" = "SSK", "Songkhla" = "SKA",
+    "Sukhothai" = "STI", "Suphan Buri" = "SPB", "Surat Thani" = "URT",
+    "Surin" = "SRN", "Tak" = "TAK", "Trang" = "TRG", "Trat" = "TRA",
+    "Ubon Ratchathani" = "UBN", "Udon Thani" = "UDN",
+    "Uthai Thani" = "UTI", "Uttaradit" = "UTD", "Yala" = "YLA",
+    "Yasothon" = "YST"
+  )
+
+  region_levels <- c(
+    "Health Region 1", "Health Region 2", "Health Region 3", "Health Region 4 and 13",
+    "Health Region 5", "Health Region 6", "Health Region 7", "Health Region 8",
+    "Health Region 9", "Health Region 10", "Health Region 11", "Health Region 12"
+  )
+
+  lambda_inc <- lambda_data |>
+    mutate(
+      region = sapply(region, zone_to_hr),
+      foi_ann = q500,
+      inc_100k = (1 - exp(-foi_ann)) * 100000
+    )
+
+  end_year <- max(lambda_inc$year, na.rm = TRUE)
+  year0 <- min(lambda_inc$year, na.rm = TRUE)
+
+  class_tbl <- lambda_inc |>
+    filter(year %in% c(year0, end_year)) |>
+    transmute(
+      region, province, year,
+      inc_val = inc_100k,
+      inc_group = cut(inc_val, breaks = inc_breaks, labels = inc_labels, include.lowest = TRUE, right = TRUE)
+    ) |>
+    tidyr::pivot_wider(
+      names_from = year,
+      values_from = c(inc_val, inc_group),
+      names_glue = "{.value}_{ifelse(year == year0, 'y0', 'y1')}"
+    ) |>
+    mutate(
+      inc_group_combo = paste0(inc_group_y0, "-", inc_group_y1),
+      is_highlight = inc_group_combo %in% highlight_combos,
+      inc_group_combo_plot = inc_group_combo#ifelse(is_highlight, inc_group_combo, grey_combo)
+    )
+
+  plot_df <- lambda_inc |>
+    left_join(class_tbl, by = c("region", "province")) |>
+    mutate(
+      region = factor(region, levels = region_levels),
+      inc_group_combo_plot = factor(inc_group_combo_plot)
+    )
+
+  label_df <- class_tbl |>
+    filter(is_highlight) |>
+    mutate(
+      province_abbr = abbr_lookup[province],
+      region = factor(region, levels = region_levels)
+    )
+
+  pals <- expand.grid(inc_labels, inc_labels) |>
+    dplyr::mutate(inc_group_combo = paste0(Var1, "-", Var2))
+
+  group_labels <- pals$inc_group_combo
+
+  core_cols <- c(
+    "#e8e8e8", "#ace4e4", "#5ac8c8",
+    "#dfb0d6", "#a5add3", "#5698b9",
+    "#be64ac", "#8c62aa", "#3b4994"
+  )
+
+  pal_cols <- setNames(core_cols[seq_along(group_labels)], group_labels)
+
+  line_size <- ifelse(plot_df$inc_group_combo_plot %in% highlight_combos, 1.4, 0.3)
+  line_alpha <- ifelse(plot_df$inc_group_combo_plot %in% highlight_combos, 0.85, 0.85)
+
+  ggplot(plot_df, aes(year, foi_ann, group = province)) +
+    geom_line(
+      aes(linewidth = I(line_size), alpha = I(line_alpha)),
+      colour = "grey60"
+    ) +
+    geom_line(
+      data = dplyr::filter(plot_df, inc_group_combo_plot != grey_combo),
+      aes(colour = inc_group_combo_plot),
+      linewidth = 1.1,
+      alpha = 0.85
+    ) +
+    ggrepel::geom_text_repel(
+      data = label_df,
+      aes(
+        x = end_year,
+        y = -log1p(-pmin(inc_val_y1, 99999) / 100000),
+        label = province_abbr,
+        colour = inc_group_combo_plot
+      ),
+      direction = "y",
+      hjust = 0,
+      nudge_x = 1,
+      size =4,
+      fontface = "bold",
+      segment.size = 0.3,
+      segment.color = "grey50",
+      segment.linetype = "dotted",
+      min.segment.length = 0,
+      max.overlaps = Inf,
+      show.legend = FALSE
+    ) +
+    facet_wrap(~ region) +
+    scale_y_log10(
+      name = "Annual FOI rate\n(per person-year)",
+      labels = scales::label_scientific(digits = 1),
+      sec.axis = sec_axis(
+        transform = ~ (1 - exp(-.)) * 100000,
+        name = "Annual incidence\n(per 100,000 at-risk population)",
+        labels = scales::label_comma(accuracy = 1)
+      )
+    ) +
+    scale_colour_manual(values = pal_cols, name = NULL) +
+    scale_fill_manual(values = pal_cols, name = NULL) +
+    coord_cartesian(clip = "off") +
+    scale_x_continuous(
+      expand = expansion(mult = c(0.02, 0.2)),
+      breaks = seq(min(plot_df$year, na.rm = TRUE), max(plot_df$year, na.rm = TRUE), 5)
+    ) +
+    theme_bw(base_size = 16) +
+    theme(
+      panel.grid.minor = element_blank(),
+      legend.position = "none",
+      panel.spacing = unit(0.5, "lines"),
+      plot.margin = margin(5.5, 50, 5.5, 5.5),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      axis.title.x = element_blank()
+    ) +
+    labs(x = NULL) +
+    ggtitle("Trends in FOI by province")
+}
+
+######################################################################################
+
+
+make_bivar_map <- function(lambda_data,
+                                              map_data,
+                                              year0 = 2003,
+                                              year1 = 2024,
+                                              foi_breaks = c(-Inf, 100, 1000, Inf),
+                                              foi_labels = c("< 100", "100-1000", "> 1000"),
+                                              pal = "DkViolet2",
+                                              subtitle = "Bivariate choropleth: 2003 vs 2024 (median FOI)",
+                                              legend_bbox = c(xmin = 101.0, xmax = 104.3, ymin = 8.0, ymax = 11.2)) {
+  stopifnot(length(foi_breaks) == length(foi_labels) + 1)
+
+  foi_wide <- lambda_data |>
+    mutate(
+      foi_ann = q500,
+      inc_100k = (1 - exp(-foi_ann)) * 100000
+    ) |>
+    filter(year %in% c(year0, year1)) |>
+    select(province, year, inc_100k) |>
+    tidyr::pivot_wider(names_from = year, values_from = inc_100k, names_prefix = "y") |>
+    dplyr::rename(inc_0 = !!paste0("y", year0), inc_1 = !!paste0("y", year1))
+
+  foi_wide <- foi_wide |>
+    mutate(
+      inc_0_cat = cut(inc_0, breaks = foi_breaks, labels = foi_labels, include.lowest = TRUE, right = TRUE),
+      inc_1_cat = cut(inc_1, breaks = foi_breaks, labels = foi_labels, include.lowest = TRUE, right = TRUE),
+      bi_ix_x = as.integer(inc_0_cat),
+      bi_ix_y = as.integer(inc_1_cat),
+      bi_class = paste0(bi_ix_x, "-", bi_ix_y)
+    )
+
+  map_bi <- map_data |>
+    left_join(foi_wide, by = c("Provinc" = "province")) |>
+    mutate(
+      bi_class = factor(
+        bi_class,
+        levels = as.vector(outer(seq_along(foi_labels), seq_along(foi_labels), \(x, y) paste0(x, "-", y)))
+      )
+    )
+
+  p_map <- ggplot(map_bi) +
+    geom_sf(aes(fill = bi_class), color = "white", linewidth = 0.15, show.legend = FALSE) +
+    biscale::bi_scale_fill(pal = pal, dim = length(foi_labels), na.value = "grey90") +
+    coord_sf(xlim = c(96, 106), ylim = c(5, 21), expand = FALSE) +
+    theme_void(base_size = 14) +
+    labs(title = subtitle) +
+    theme(
+      plot.title = element_text(face = "bold", size = 12, margin = margin(b = 6)),
+      plot.margin = margin(6, 6, 6, 6)
+    )
+
+legend_plot <- biscale::bi_legend(
+    pal = pal,
+    dim = length(foi_labels),
+    xlab = year0 %>% as.character(),
+    ylab = year1 %>% as.character()
+  ) +
+    scale_x_continuous(breaks = seq_along(foi_labels),
+                       labels = foi_labels,
+                       expand = c(0, 0)) +
+    scale_y_continuous(breaks = seq_along(foi_labels),
+                       labels = foi_labels,
+                       expand = c(0, 0)) +
+    theme(
+      axis.text.x  = element_text(size = 10, angle = 45, hjust = 1),
+      axis.text.y  = element_text(size = 10),
+      axis.title = element_text(size = 12),
+      plot.margin = margin(0, 0, 0, 0)
+    )
+
+  # stack vertically
+  p_map / legend_plot + patchwork::plot_layout(heights = c(4, 1))
+}
