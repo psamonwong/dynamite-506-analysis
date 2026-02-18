@@ -372,6 +372,27 @@ dev.off()
 ```
 .
 
+## Figure 4: Case detection sensitivity
+
+```{r}
+g_case_sensitivity <- plot_Se_over_time(map_data = map_data)
+print(g_case_sensitivity)
+```
+
+```{r}
+if(export_plot){
+png(here("Plots", "Figure4_case_sensitivity.png"), width = 12, height = 8, units = "in", res = 300)
+print(g_case_sensitivity)
+dev.off()
+}
+```
+
+
+
+
+
+
+
 
 
 

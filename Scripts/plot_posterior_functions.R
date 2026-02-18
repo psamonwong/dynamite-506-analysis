@@ -227,7 +227,7 @@ dev.off()
 ################################################################
 
 # Extract and plot Se_y over time
-plot_Se_over_time <- function(probs = c(0.025, 0.5, 0.975)) {
+plot_Se_over_time <- function(probs = c(0.025, 0.5, 0.975), map_data) {
   stopifnot(exists("fit"), exists("stan_data"), exists("calendar"))
   Y <- stan_data$Y
   
