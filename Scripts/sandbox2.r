@@ -1,10 +1,22 @@
+
+
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+library(here)
+library(rstan)
+library(biscale)
+
+dataset <- "Full"
+
+load(here("Rout", paste0("fit_", dataset, ".RData")))
+
+
 
 region_id <- stan_data$region_id
 
-
+site_levels
+region_levels
 
 eval_seasonality_curves <- function(
   fit,
@@ -99,15 +111,86 @@ S <- length(stan_data$region_id)
 
 season_prov_smooth <- eval_seasonality_curves(
   fit = fit, H = H, P = P, S = S,
-  entity = "region",
+  entity = "province",
   region_id = region_id,
   month_grid = seq(1, 12, length.out = 241)
 )
 
 
+seasonality_indices <- season_prov_smooth |>
+  rename(region = entity, month = x, mult = q500) |>
+  group_by(region, period) |>
+  summarize(
+    peak_month   = month[which.max(mult)], # Month of peak seasonality
+    trough_month = month[which.min(mult)], # Month of trough seasonality
+    peak_mult    = max(mult), # Peak seasonal multiplier
+    trough_mult  = min(mult), # Trough seasonal multiplier
+    amp_ratio    = peak_mult / trough_mult, # Amplitude ratio (peak/trough)
+    amp_log      = log(amp_ratio), # Log amplitude (log(peak/trough))
+    .groups = "drop"
+  )
 
 
 
+wss <- sapply(1:10, function(k) {
+  kmeans(seasonality_indices |> 
+  select(-region, -period, -clusters, -trough_month, -trough_mult, -amp_ratio), centers = k, nstart = 25)$tot.withinss
+})
+
+plot(1:10, wss, type = "b", pch = 19,
+     xlab = "Number of clusters (k)",
+     ylab = "Total within-cluster sum of squares",
+     main = "Elbow Plot for K-means Clustering")
+
+library(factoextra)
+k <- 3 # Start with 3 archetypes
+seasonality_indices$clusters <- kmeans(seasonality_indices |> 
+  select(-region, -period, -clusters, -trough_month, -trough_mult, -amp_ratio),centers = k, nstart = 25)$cluster
+
+
+# Summarize median peak month and amplitude ratio per cluster
+cluster_summaries <- seasonality_indices |>
+  group_by(clusters) |>
+  summarize(
+    median_peak_month = median(peak_month),
+    median_amp_ratio = median(amp_ratio),
+    .groups = "drop"
+  ) |>
+  mutate(
+    label = paste0(
+      "Peak month: ", formatC(median_peak_month, format = "f", digits = 1), "\n",
+      "Amplitude-to-through ratio: ", formatC(median_amp_ratio, format = "f", digits = 1)
+    ),
+    x = 1,   # adjust x/y for label placement as needed
+    y = 2.0
+  )
+
+
+
+season_prov_smooth  %>%
+  left_join(seasonality_indices %>% select(region, period, clusters), by = c("entity" = "region", "period")) %>%
+  group_by(x, clusters) %>%
+  summarize(q_med = median(q500),
+            q_low = quantile(q500, 0.25),
+            q_up = quantile(q500, 0.77)) %>%
+  ggplot(aes(x =x)) +
+  geom_ribbon(aes(ymin = q_low, ymax = q_up, fill = as.factor(clusters)), alpha = 0.15, color = NA) +
+  geom_line(linewidth = 1.5, aes(y = q_med, color = as.factor(clusters))) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  facet_wrap(~ clusters, ncol = 3) +
+  geom_text(data = cluster_summaries, aes(x = x, y = y, label = label),
+    inherit.aes = FALSE, hjust = 0, vjust = 1, size = 4) +
+  theme_bw(base_size = 14) +
+  scale_x_continuous(breaks = seq(1, 12, by = 3), 
+                     minor_breaks = NULL, 
+                     labels =  month.abb[seq(1, 12, by = 3)]) +
+  scale_y_continuous(breaks = seq(0.5, 3, by = 0.5)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = "none") +
+  xlab("") +
+  ylab("Pattern mean seasonal multiplier") +
+  scale_color_manual(values = c("#E97F4A", "#628141", "#0992C2"))
+ 
 
 
 p_prov <- ggplot(season_prov_smooth, aes(x = x, y = q500, colour = period, fill = period)) +
@@ -122,22 +205,3 @@ p_prov <- ggplot(season_prov_smooth, aes(x = x, y = q500, colour = period, fill 
 p_prov
 
 
-
-
-seasonality_indices <- season_prov_smooth |>
-  rename(region = entity, month = x, mult = q500) |>
-  group_by(region, period) |>
-  summarize(
-    peak_month   = month[which.max(mult)],
-    trough_month = month[which.min(mult)],
-    peak_mult    = max(mult),
-    trough_mult  = min(mult),
-    amp_ratio    = peak_mult / trough_mult,
-    amp_log      = log(amp_ratio),
-    .groups = "drop"
-  )
-
-seasonality_indices
-
-ggplot(seasonality_indices, aes(x = region, y = peak_month, color = period)) +
-  geom_point(position = position_dodge(width = 0.5)) 

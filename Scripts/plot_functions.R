@@ -552,3 +552,250 @@ legend_plot <- biscale::bi_legend(
   # stack vertically
   p_map / legend_plot + patchwork::plot_layout(heights = c(5, 1))
 }
+######################################################################################
+eval_seasonality_curves <- function(
+  fit, H, P, S,
+  entity = c("province", "region"),
+  region_id = NULL,
+  region_labels = NULL,
+  month_grid = seq(1, 12, length.out = 241),
+  probs = c(0.025, 0.5, 0.975)
+) {
+  entity <- match.arg(entity)
+
+  dr <- rstan::extract(fit, pars = c("a_cos", "a_sin"))
+  a_cos <- dr$a_cos  # iter x H x P x S
+  a_sin <- dr$a_sin  # iter x H x P x S
+
+  stopifnot(length(dim(a_cos)) == 4, dim(a_sin)[1] == dim(a_cos)[1])
+
+  n_iter <- dim(a_cos)[1]
+  theta <- 2 * pi * month_grid / 12
+
+  # Precompute basis: (grid x H)
+  cos_basis <- sapply(seq_len(H), \(h) cos(h * theta))
+  sin_basis <- sapply(seq_len(H), \(h) sin(h * theta))
+
+  # Result: iter x grid x P x S
+  f <- array(0, dim = c(n_iter, length(month_grid), P, S))
+for (p in seq_len(P)) {
+  for (s in seq_len(S)) {
+    A_cos <- a_cos[, , p, s, drop = FALSE][, , 1, 1]  # n_iter x H
+    A_sin <- a_sin[, , p, s, drop = FALSE][, , 1, 1]  # n_iter x H
+
+    f[, , p, s] <- A_cos %*% t(cos_basis) + A_sin %*% t(sin_basis)
+  }
+}
+
+  mult <- exp(f) # iter x grid x P x S
+
+  # Optionally aggregate provinces -> regions for each draw
+  if (entity == "region") {
+    stopifnot(!is.null(region_id))
+    R <- max(region_id)
+    mult_reg <- array(NA_real_, dim = c(n_iter, length(month_grid), P, R))
+    for (r in seq_len(R)) {
+      s_idx <- which(region_id == r)
+      mult_reg[, , , r] <- apply(mult[, , , s_idx, drop = FALSE], c(1, 2, 3), mean)
+    }
+    mult <- mult_reg
+    S <- dim(mult)[4]
+
+    if (is.null(region_labels)) region_labels <- paste0("Region ", seq_len(S))
+    entity_names <- region_labels
+  } else {
+    entity_names <- paste0("Province ", seq_len(S))
+  }
+
+  # Summarize across iterations
+  out <- tidyr::crossing(
+    x = month_grid,
+    period = factor(seq_len(P), labels = paste0("Period ", seq_len(P))),
+    entity = factor(entity_names, levels = entity_names)
+  ) |>
+    mutate(q025 = NA_real_, q500 = NA_real_, q975 = NA_real_)
+
+  # Create index matching
+  out <- out |>
+    mutate(
+      idx = match(
+        paste(x, period, entity, sep = "|"),
+        paste(month_grid[match(x, month_grid)], period, entity, sep = "|")
+      )
+    )
+  
+  for (e in seq_len(S)) {
+    for (p in seq_len(P)) {
+      idx_mask <- out$period == levels(out$period)[p] & out$entity == entity_names[e]
+      qs_all <- apply(mult[, , p, e], 2, \(col) stats::quantile(col, probs = probs, names = FALSE))
+      out$q025[idx_mask] <- qs_all[1, ]
+      out$q500[idx_mask] <- qs_all[2, ]
+      out$q975[idx_mask] <- qs_all[3, ]
+    }
+  }
+
+  out
+}
+
+
+compute_seasonality_indices <- function(season_curves) {
+  season_curves |>
+    rename(region = entity, month = x, mult = q500) |>
+    group_by(region, period) |>
+    summarize(
+      peak_month = month[which.max(mult)],
+      trough_month = month[which.min(mult)],
+      peak_mult = max(mult),
+      trough_mult = min(mult),
+      amp_ratio = peak_mult / trough_mult,
+      amp_log = log(amp_ratio),
+      .groups = "drop"
+    )
+}
+
+cluster_seasonality <- function(indices, k, 
+  exclude_cols = c("region", "period", "trough_month", "trough_mult", "amp_ratio")) {
+  selected <- indices |> select(-all_of(exclude_cols))
+  km <- kmeans(selected, centers = k, nstart = 25)
+  # Order clusters by frequency
+  freq <- sort(table(km$cluster), decreasing = TRUE)
+  new_labels <- match(km$cluster, as.integer(names(freq)))
+  pattern_labels <- paste0("Pattern ", seq_along(freq))
+  indices$clusters <- factor(new_labels, levels = seq_along(freq), labels = pattern_labels)
+  indices
+}
+
+plot_seasonality_by_cluster <- function(season_curves, indices) {
+  cluster_summaries <- indices |>
+    group_by(clusters) |>
+    summarize(
+      median_peak_month = median(peak_month),
+      median_amp_ratio = median(amp_ratio),
+      .groups = "drop"
+    ) |>
+    mutate(
+      label = paste0(
+        "Peak month: ", formatC(median_peak_month, format = "f", digits = 1), "\n",
+        "Amplitude ratio: ", formatC(median_amp_ratio, format = "f", digits = 1), "\n"
+      ),
+      x = 1, y = 2.0
+    )
+
+  season_curves %>%
+    left_join(indices %>% select(region, period, clusters), by = c("entity" = "region", "period")) %>%
+    group_by(x, clusters) %>%
+    summarize(q_med = median(q500),
+              q_low = quantile(q500, 0.25),
+              q_up = quantile(q500, 0.77),
+              .groups = "drop_last") %>%
+    ggplot(aes(x = x)) +
+    geom_ribbon(aes(ymin = q_low, ymax = q_up, fill = as.factor(clusters)), alpha = 0.3, color = NA) +
+    geom_line(linewidth = 1.5, aes(y = q_med, color = as.factor(clusters))) +
+    geom_hline(yintercept = 1, linetype = "31", alpha = 0.75) +
+    facet_wrap(~ clusters, ncol = 3) +
+    geom_text(data = cluster_summaries, aes(x = x, y = y, label = label),
+              inherit.aes = FALSE, hjust = 0, vjust = 1, size = 4) +
+    theme_bw(base_size = 14) +
+    scale_x_continuous(breaks = seq(1, 12, by = 3), minor_breaks = NULL,
+                       labels = month.abb[seq(1, 12, by = 3)]) +
+    scale_y_continuous(breaks = seq(0.5, 3, by = 0.5)) +
+    theme(legend.position = "none") +
+    xlab("") + ylab("Seasonal multiplier") +
+    scale_color_manual(values = c("#F88A40", "#3E8359", "#5B96C5")) +
+    scale_fill_manual(values = c("#F88A40", "#3E8359", "#5B96C5"))
+}
+
+elbow_plot <- function(indices, max_k = 10, exclude_cols = c("region", "period", "clusters", "trough_month", "trough_mult", "amp_ratio")) {
+  selected <- indices |> select(-all_of(exclude_cols))
+  wss <- sapply(1:max_k, function(k) {
+    kmeans(selected, centers = k, nstart = 25)$tot.withinss
+  })
+  tibble::tibble(k = 1:max_k, wss = wss) %>%
+    ggplot(aes(x = k, y = wss)) +
+    geom_point(size = 2) +
+    geom_line() +
+    labs(
+      x = "Number of clusters (k)",
+      y = "Total within-cluster sum of squares",
+      title = "Elbow Plot for K-means Clustering"
+    ) +
+    theme_bw(base_size = 14)
+}
+###############################################################################
+plot_seasonality_map <- function(seasonality_indices, map_data, 
+  site_levels, period_i) {
+  seasonality_indices <- seasonality_indices %>%
+    mutate(region = factor(region, levels = paste0("Province ", seq_along(site_levels)), labels = site_levels))
+  
+  seasonality_indices_i <- seasonality_indices %>%
+    filter(period == period_i)
+  
+  map_seasonality_i <- map_data %>%
+    left_join(
+      seasonality_indices_i %>%
+        rename(geometry_id = region),
+      by = c("Provinc" = "geometry_id")
+    )
+  
+  ggplot(map_seasonality_i) +
+    geom_sf(aes(fill = as.factor(clusters)), color = "white", linewidth = 0.1, alpha = 0.85) +
+    scale_fill_manual(name = NULL, values = c("#F88A40", "#3E8359", "#5B96C5")) +
+    coord_sf(xlim = c(96, 106), ylim = c(5, 21), expand = FALSE) +
+    theme_void() +
+    theme(axis.text = element_blank(),
+          axis.ticks = element_blank(),
+          legend.position = "none") 
+}
+
+#################################################################################
+plot_seasonality_alluvial <- function(seasonality_indices,
+                                      period_labels = c("2003-2007", "2008-2012", "2013-2018", "2019-2024"),
+                                      cluster_colors =c("#F88A40", "#3E8359", "#5B96C5")) {
+  library(dplyr)
+  library(tidyr)
+  library(ggalluvial)
+  library(ggplot2)
+
+  # Prepare data
+  seasonality_trend <- seasonality_indices %>%
+    select(region, period, clusters)
+
+  # Wide format: one column per period's cluster
+  seasonality_trend_wide <- seasonality_trend %>%
+    mutate(period = as.character(period)) %>%
+    pivot_wider(
+      id_cols = region,
+      names_from = period,
+      values_from = clusters,
+      names_prefix = "cluster_"
+    ) %>%
+    mutate(freq = 1)
+
+  # Plot
+  ggplot(seasonality_trend_wide,
+         aes(axis1 = `cluster_Period 1`,
+             axis2 = `cluster_Period 2`,
+             axis3 = `cluster_Period 3`,
+             axis4 = `cluster_Period 4`,
+             y = freq)) +
+    geom_alluvium(aes(fill = `cluster_Period 4`), width = 1/3, alpha = 0.7) +
+    geom_stratum(width = 1/3, fill = "grey90", color = "black") +
+    geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3.5) +
+    scale_x_continuous(
+      breaks = 1:4,
+      labels = period_labels,
+      expand = c(0, 0)
+    ) +
+    labs(x = "Period", y = "", fill = "Cluster (Period 1)") +
+    scale_fill_manual(values = cluster_colors) +
+    theme_minimal(base_size = 14) +
+    theme(
+      panel.grid = element_blank(),
+      axis.text.y = element_blank(),
+      axis.title = element_blank(),
+      axis.text.x = element_text(color = "black"),
+      legend.position = "none",
+      plot.margin = margin(0, 0, 0, 0)
+    )
+}
+
