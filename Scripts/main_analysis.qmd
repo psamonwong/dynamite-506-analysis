@@ -260,19 +260,19 @@ print(p_bivar)
 ```{r}
 g_FOI_map <- g_FOI +
   p_bivar +
-  plot_layout(widths = c(3.5, 1.5)) +                  # increase map share; tune as needed
-  plot_annotation(theme = theme(plot.margin = margin(0, 0, 0, 0)))
+  plot_layout(widths = c(3.5, 1.5), heights = c(1)) +
+  plot_annotation(theme = theme(plot.margin = margin(0, 0, 0, 0))) 
 
 # remove extra plot margins on each component (the main cause of the gap)
 g_FOI_map <- g_FOI_map &
-  theme(plot.margin = margin(0.1, 0.1, 0.1, 0.1))
+  theme(plot.margin = margin(0.4, 0.4, 0.4, 0.4))
 
 g_FOI_map
 ```
 
 ```{r}
 if(export_plot){
-png(here("Plots", "Figure2_map.png"), width = 15, height = 10, units = "in", res = 300)
+png(here("Plots", "Figure2_map.png"), width = 15, height = 9, units = "in", res = 300)
 print(g_FOI_map)
 dev.off()
 }

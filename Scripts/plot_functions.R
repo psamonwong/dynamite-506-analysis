@@ -302,6 +302,8 @@ extract_lambda_base <- function(probs = c(0.025, 0.5, 0.975)) {
 
 
 plot_foi_trends_inc_groups <- function(lambda_data,
+                                      year0 = 2003,
+                                      end_year = 2024,
                                        inc_breaks = c(-Inf, 100, 1000, Inf),
                                        inc_labels = c("< 100", "100-1000", "> 1000"),
                                        highlight_combos = c("100-1000-> 1000", "> 1000-> 1000", "> 1000-> 100-1000"),
@@ -358,26 +360,29 @@ plot_foi_trends_inc_groups <- function(lambda_data,
       inc_100k = (1 - exp(-foi_ann)) * 100000
     )
 
-  end_year <- max(lambda_inc$year, na.rm = TRUE)
-  year0 <- min(lambda_inc$year, na.rm = TRUE)
+  # end_year <- max(lambda_inc$year, na.rm = TRUE)
+  # year0 <- min(lambda_inc$year, na.rm = TRUE)
 
-  class_tbl <- lambda_inc |>
+ 
+class_tbl <- lambda_inc |>
     filter(year %in% c(year0, end_year)) |>
     transmute(
       region, province, year,
       inc_val = inc_100k,
       inc_group = cut(inc_val, breaks = inc_breaks, labels = inc_labels, include.lowest = TRUE, right = TRUE)
     ) |>
+  mutate(year = ifelse(year == year0, "y0", "y1")) |>
     tidyr::pivot_wider(
       names_from = year,
       values_from = c(inc_val, inc_group),
-      names_glue = "{.value}_{ifelse(year == year0, 'y0', 'y1')}"
+      names_sep = "_"
     ) |>
     mutate(
       inc_group_combo = paste0(inc_group_y0, "-", inc_group_y1),
       is_highlight = inc_group_combo %in% highlight_combos,
       inc_group_combo_plot = inc_group_combo#ifelse(is_highlight, inc_group_combo, grey_combo)
     )
+
 
   plot_df <- lambda_inc |>
     left_join(class_tbl, by = c("region", "province")) |>
@@ -406,7 +411,7 @@ plot_foi_trends_inc_groups <- function(lambda_data,
 
   pal_cols <- setNames(core_cols[seq_along(group_labels)], group_labels)
 
-  line_size <- ifelse(plot_df$inc_group_combo_plot %in% highlight_combos, 1.4, 0.3)
+  line_size <- ifelse(plot_df$inc_group_combo_plot %in% highlight_combos, 1, 0.3)
   line_alpha <- ifelse(plot_df$inc_group_combo_plot %in% highlight_combos, 0.85, 0.85)
 
   ggplot(plot_df, aes(year, foi_ann, group = province)) +
@@ -417,8 +422,8 @@ plot_foi_trends_inc_groups <- function(lambda_data,
     geom_line(
       data = dplyr::filter(plot_df, inc_group_combo_plot != grey_combo),
       aes(colour = inc_group_combo_plot),
-      linewidth = 1.1,
-      alpha = 0.85
+      linewidth = 1.2,
+      alpha = 1
     ) +
     ggrepel::geom_text_repel(
       data = label_df,
@@ -442,11 +447,11 @@ plot_foi_trends_inc_groups <- function(lambda_data,
     ) +
     facet_wrap(~ region) +
     scale_y_log10(
-      name = "Annual FOI rate\n(per person-year)",
+      name = "Estimated annual force of infection\n(per at-risk person-year)",
       labels = scales::label_scientific(digits = 1),
       sec.axis = sec_axis(
         transform = ~ (1 - exp(-.)) * 100000,
-        name = "Annual incidence\n(per 100,000 at-risk population)",
+        name = "Estimated annual incidence\n(per 100,000 at-risk population)",
         labels = scales::label_comma(accuracy = 1)
       )
     ) +
@@ -459,6 +464,7 @@ plot_foi_trends_inc_groups <- function(lambda_data,
     ) +
     theme_bw(base_size = 16) +
     theme(
+      panel.grid.major = element_line(linewidth = 0.4),
       panel.grid.minor = element_blank(),
       legend.position = "none",
       panel.spacing = unit(0.5, "lines"),
@@ -467,19 +473,17 @@ plot_foi_trends_inc_groups <- function(lambda_data,
       axis.title.x = element_blank()
     ) +
     labs(x = NULL) +
-    ggtitle("Trends in FOI by province")
+    ggtitle("Temporal trends in estimated force of infection and annual incidence") 
 }
 
 ######################################################################################
-
-
 make_bivar_map <- function(lambda_data,
                                               map_data,
                                               year0 = 2003,
                                               year1 = 2024,
                                               foi_breaks = c(-Inf, 100, 1000, Inf),
                                               foi_labels = c("< 100", "100-1000", "> 1000"),
-                                              pal = "DkViolet2",
+                                              pal = "DkBlue",
                                               subtitle = "Bivariate choropleth: 2003 vs 2024 (median FOI)",
                                               legend_bbox = c(xmin = 101.0, xmax = 104.3, ymin = 8.0, ymax = 11.2)) {
   stopifnot(length(foi_breaks) == length(foi_labels) + 1)
@@ -512,22 +516,25 @@ make_bivar_map <- function(lambda_data,
       )
     )
 
+  
   p_map <- ggplot(map_bi) +
-    geom_sf(aes(fill = bi_class), color = "white", linewidth = 0.15, show.legend = FALSE) +
+    geom_sf(aes(fill = bi_class), color = "white", linewidth = 0.3, show.legend = FALSE) +
     biscale::bi_scale_fill(pal = pal, dim = length(foi_labels), na.value = "grey90") +
     coord_sf(xlim = c(96, 106), ylim = c(5, 21), expand = FALSE) +
     theme_void(base_size = 14) +
     labs(title = subtitle) +
     theme(
-      plot.title = element_text(face = "bold", size = 12, margin = margin(b = 6)),
-      plot.margin = margin(6, 6, 6, 6)
+      plot.title = element_blank(),
+      axis.title = element_blank(),
+      plot.margin = margin(0.1, 0.1, 0.1, 0.1)
     )
 
+  options(error = NULL)
 legend_plot <- biscale::bi_legend(
     pal = pal,
     dim = length(foi_labels),
-    xlab = year0 %>% as.character(),
-    ylab = year1 %>% as.character()
+    xlab = paste0("Incidence in ", year0),
+    ylab = paste0("Incidence in ", year1),
   ) +
     scale_x_continuous(breaks = seq_along(foi_labels),
                        labels = foi_labels,
@@ -536,12 +543,12 @@ legend_plot <- biscale::bi_legend(
                        labels = foi_labels,
                        expand = c(0, 0)) +
     theme(
-      axis.text.x  = element_text(size = 10, angle = 45, hjust = 1),
-      axis.text.y  = element_text(size = 10),
-      axis.title = element_text(size = 12),
+      axis.text.x  = element_text(size = 11, angle = 45, hjust = 1),
+      axis.text.y  = element_text(size = 11),
+      axis.title = element_text(size = 13),
       plot.margin = margin(0, 0, 0, 0)
     )
 
   # stack vertically
-  p_map / legend_plot + patchwork::plot_layout(heights = c(4, 1))
+  p_map / legend_plot + patchwork::plot_layout(heights = c(5, 1))
 }
