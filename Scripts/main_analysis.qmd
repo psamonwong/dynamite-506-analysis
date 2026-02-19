@@ -387,13 +387,34 @@ dev.off()
 }
 ```
 
+## Figure 5: Age specific susceptibility and case-fatality rate
 
+### 5.1 Age susceptibility
+```{r}
+g_age_susceptibility <- plot_relative_susceptibility(fit, age_levels, ref_age = ref_age_label)
+print(g_age_susceptibility)
+```
 
+### 5.2 Case-fatality rate
 
+```{r}
+g_cfr <- cfr_plot(fit, age_levels)
+print(g_cfr)
+```
 
+```{r}
+combined_age_plot <- (g_age_susceptibility + g_cfr) + plot_layout(guides = "collect") & 
+  theme(legend.position = "bottom") 
+print(combined_age_plot)
+```
 
-
-
+```{r}
+if(export_plot){
+png(here("Plots", "Figure5_age_susceptibility_cfr.png"), width = 10, height = 6, units = "in", res = 300)
+print(combined_age_plot)
+dev.off()
+}
+```
 
 
 ```{r setup}

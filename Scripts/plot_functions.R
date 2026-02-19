@@ -865,7 +865,7 @@ se_trend <- ggplot(Se_summ, aes(x = year)) +
   scale_y_continuous(limits = c(0, 1)) +
   theme_bw(base_size = 14) +
   theme(panel.grid.minor = element_blank(),
-        axis.title = element_blank()) +
+        axis.title.x = element_blank()) +
   facet_wrap(.~region, ncol = 3) 
   
    map_se <- map_data %>%
@@ -892,4 +892,87 @@ se_trend <- ggplot(Se_summ, aes(x = year)) +
   combined_se_plot <- se_trend + map_se + plot_layout(ncol = 2, widths  = c(2, 1)) 
   combined_se_plot + plot_annotation(theme = theme(plot.margin = margin(0.2, 0.2, 0.2, 0.2)))
   
+}
+################################################################################
+
+plot_relative_susceptibility <- function(fit, age_levels, ref_age = "25 to 35") {
+  rho_mat <- as.matrix(fit, pars = "rho_pa")
+  idx <- stringr::str_match(colnames(rho_mat), "rho_pa\\[(\\d+),(\\d+)\\]")
+  
+  rho_summ <- tibble(par = colnames(rho_mat), p_idx = as.integer(idx[, 2]), a_idx = as.integer(idx[, 3])) |>
+    left_join(
+      as_tibble(rho_mat) |> mutate(.draw = row_number()) |>
+        pivot_longer(cols = -.draw, names_to = "par", values_to = "rho"),
+      by = "par"
+    ) |>
+    group_by(p_idx, a_idx) |>
+    summarize(
+      mean = mean(rho), q025 = quantile(rho, 0.025), q975 = quantile(rho, 0.975),
+      .groups = "drop"
+    ) |>
+    mutate(
+      period = paste0("Period ", p_idx),
+      age_group = age_levels[a_idx]
+    )
+  
+  rho_summ |>
+    mutate(
+      age_group = factor(age_group, levels = age_levels),
+      period = factor(period, levels = paste0("Period ", 1:4), 
+                     labels = c("2003 to 2007", "2008 to 2012", "2013 to 2018", "2019 to 2024"))
+    ) |>
+    filter(age_group != ref_age) |>
+    ggplot() +
+    geom_hline(yintercept = 1, linetype = "21", color = "gray30", linewidth = 1, alpha = 0.7) +
+    geom_point(aes(x = age_group, y = mean, col = period), alpha = 0.8,
+                  position = position_dodge(width = 0.4), size = 3) +
+    geom_errorbar(aes(x = age_group, ymin = q025, ymax = q975, col = period), 
+                  position = position_dodge(width = 0.4), alpha = 0.8,
+                  width = 0, linewidth = 1.1) +
+     scale_color_viridis_d(option = "magma", end = 0.8, name="") +
+    labs(
+      x = "",
+      y = "Relative Susceptibility",
+      title = paste0("Relative Susceptibility\n(relative to ", ref_age, " years)")) +
+    theme_bw(base_size = 14) +
+    scale_y_continuous(limits = c(0.2, 1.8)) +
+    coord_flip()
+}
+################################################################################
+
+cfr_plot <- function(fit, age_levels, period_labels = c("2003 to 2007", "2008 to 2012", "2013 to 2018", "2019 to 2024")) {
+  CFR_mat <- as.matrix(fit, pars = "CFR_pa")
+  idx <- stringr::str_match(colnames(CFR_mat), "CFR_pa\\[(\\d+),(\\d+)\\]")
+  
+  CFR_summ <- tibble(par = colnames(CFR_mat), p_idx = as.integer(idx[, 2]), a_idx = as.integer(idx[, 3])) |>
+    left_join(
+      as_tibble(CFR_mat) |> mutate(.draw = row_number()) |>
+        pivot_longer(cols = -.draw, names_to = "par", values_to = "CFR"),
+      by = "par"
+    ) |>
+    group_by(p_idx, a_idx) |>
+    summarize(
+      mean = mean(CFR), q025 = quantile(CFR, 0.025), q975 = quantile(CFR, 0.975),
+      .groups = "drop"
+    ) |>
+    mutate(
+      period = paste0("Period ", p_idx),
+      age_group = factor(age_levels[a_idx], levels = age_levels)
+    )
+  
+  CFR_summ |>
+    mutate(
+      age_group = factor(age_group, levels = age_levels),
+      period = factor(period, levels = paste0("Period ", 1:4), labels = period_labels)
+    ) |>
+    ggplot() +
+    geom_abline(intercept = 0, slope = 0, linetype = "21", color = "gray30", linewidth = 1, alpha = 0.7) +
+    geom_point(aes(x = age_group, y = mean * 100, color = period), size = 3, alpha = 0.8,
+               position = position_dodge(width = 0.5)) +
+    geom_errorbar(aes(x = age_group, ymin = q025 * 100, ymax = q975 * 100, color = period), alpha = 0.8,
+                  width = 0, position = position_dodge(width = 0.5), linewidth = 1.1) +
+    scale_color_viridis_d(option = "magma", end = 0.8, name = "") +
+    labs(x = "", y = "Case-Fatality Rate (%)", title = "\nCase-Fatality Rate") +
+    theme_bw(base_size = 14) +
+    coord_flip()
 }
