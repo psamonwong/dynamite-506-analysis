@@ -416,108 +416,45 @@ dev.off()
 }
 ```
 
+## Posterior predictive checks and additional diagnostics
 
-```{r setup}
-#| label: setup
-#| include: false
-
-library(here)
-library(tidyverse)
-library(rstan)
-library(ggpubr)
-library(scales)
-library(knitr)
-
-# Load fitted model and data
-load(here("Rout", "fit_09.RData"))
-load(here("Rout", "stan_data_09.RData"))
-
-# Extract dimensions
+```{r}
+# Create output directory if it doesn't exist
+dir_create(here("Plots", "predictive_check", dataset))
 S <- stan_data$S
 T <- stan_data$T
 Y <- stan_data$Y
-A <- stan_data$A
-P <- stan_data$P
-M <- stan_data$M
-R <- stan_data$R
+# Collect plots in a list
 
-# Year range
-year_range <- range(calendar$year)
+plot_list <- vector("list", S)
+for (s_idx in seq_len(S)) {
+  plot_data <- ppc_cases_by_province(s_idx = s_idx)
+  plot_list[[s_idx]] <- ggplot(plot_data, aes(x = date)) +
+    geom_ribbon(aes(ymin = yrep_q025, ymax = yrep_q975), fill = "steelblue", alpha = 0.20) +
+    geom_line(aes(y = yrep_q500), color = "steelblue", linewidth = 1) +
+    geom_point(aes(y = observed_case), color = "black", size = 1.6, alpha = 0.6) +
+    labs(
+      x = "", y = "Reported cases",
+      title = unique(plot_data$province)  # Province name as title
+    ) +
+    theme_bw(base_size = 18)
+}
+
+# Arrange plots in 3x4 grids and export each page as PNG
+plots_per_page <- 9
+n_pages <- ceiling(S / plots_per_page)
+for (i in seq_len(n_pages)) {
+  idx_start <- (i - 1) * plots_per_page + 1
+  idx_end <- min(i * plots_per_page, S)
+  plots_this_page <- plot_list[idx_start:idx_end]
+  arranged <- ggarrange(plotlist = plots_this_page, ncol = 3, nrow = 3)
+  png(here("Plots", "predictive_check", dataset, sprintf("predictive_check_page%02d.png", i)), width = 16, height = 12, units = "in", res = 300)
+  print(arranged)
+  dev.off()
+}
+
 ```
 
-## Executive Summary
-
-This analysis presents a Bayesian hierarchical model (Model 9) for scrub typhus transmission dynamics across `r S` provinces in Thailand from `r year_range[1]` to `r year_range[2]`. The model incorporates:
-
--   **Age-stratified susceptibility** (`r A` age groups)
--   **Temporal trends** in force of infection with seasonal variation
--   **Regional variation** in case detection sensitivity
--   **Case-fatality rate estimation** by age and period
-
-------------------------------------------------------------------------
-
-## 1. Data Overview
-
-### 1.1 Study Sites and Time Period
-
-```{r data-summary}
-#| label: data-summary
-
-# Summary table
-tibble(
- Dimension = c("Provinces", "Regions", "Years", "Months", "Age Groups", "Time Periods"),
- Value = c(S, R, Y, T, A, P),
- Details = c(
-   paste(site_levels, collapse = ", "),
-   paste(unique(region_levels), collapse = ", "),
-   paste(year_range, collapse = "-"),
-   paste0(T, " total monthly observations"),
-   paste(age_levels, collapse = ", "),
-   paste0(P, " blocks for seasonality variation")
- )
-) |>
- kable(caption = "Model dimensions and structure")
-```
-
-### 1.2 Observed Cases Over Time
-
-```{r observed-cases-plot}
-#| label: observed-cases
-#| fig-cap: "Monthly reported scrub typhus cases by province"
-
-calendar |>
- mutate(date = as.Date(sprintf("%d-%02d-01", year, Month))) |>
- ggplot(aes(x = date, y = case)) +
- geom_line(color = "steelblue", alpha = 0.7) +
- geom_point(size = 0.5, alpha = 0.5) +
- facet_wrap(~Area, scales = "free_y", ncol = 2) +
- labs(x = NULL, y = "Reported cases", title = "Observed Monthly Cases") +
- theme_bw(base_size = 12) +
- theme(strip.background = element_rect(fill = "grey90"))
-```
-
-### 1.3 Age Distribution of Cases
-
-```{r age-distribution}
-#| label: age-distribution
-#| fig-cap: "Age distribution of reported cases (aggregated across years)"
-
-# Aggregate cases by age
-age_totals <- tibble(
- age_group = age_levels,
- total_cases = colSums(apply(stan_data$R_case_yas, 2, rowSums))
-)
-
-ggplot(age_totals, aes(x = age_group, y = total_cases, fill = age_group)) +
- geom_col(show.legend = FALSE) +
- scale_fill_viridis_d(option = "plasma") +
- labs(x = "Age Group", y = "Total Reported Cases", 
-      title = "Age Distribution of Scrub Typhus Cases") +
- theme_bw(base_size = 12) +
- theme(axis.text.x = element_text(angle = 45, hjust = 1))
-```
-
-------------------------------------------------------------------------
 
 ## 2. Model Diagnostics
 
@@ -539,323 +476,4 @@ convergence_tbl <- fit_summary[key_params, c("mean", "sd", "2.5%", "97.5%", "n_e
  mutate(across(where(is.numeric), ~round(.x, 3)))
 
 kable(convergence_tbl, caption = "Convergence diagnostics for key parameters")
-```
-
-### 2.2 Posterior Predictive Check: Cases
-
-```{r ppc-function}
-#| label: ppc-function
-
-# Function to compute PPC for a province
-ppc_cases_by_province <- function(s_idx) {
- C_mat <- as.matrix(fit, pars = "C_ts")
- phi_vec <- as.numeric(as.matrix(fit, pars = "phi_case"))
- 
- idx <- stringr::str_match(colnames(C_mat), "C_ts\\[(\\d+),(\\d+)\\]")
- t_idx_col <- as.integer(idx[, 2])
- s_idx_col <- as.integer(idx[, 3])
- 
- param_map <- tibble(par = colnames(C_mat), t_idx = t_idx_col, s = s_idx_col) |>
-   filter(s == s_idx)
- 
- C_long <- as_tibble(C_mat[, param_map$par, drop = FALSE]) |>
-   mutate(.draw = row_number()) |>
-   pivot_longer(cols = -.draw, names_to = "par", values_to = "C_expected") |>
-   left_join(param_map, by = "par")
- 
- phi_df <- tibble(.draw = seq_len(nrow(C_mat)), phi = phi_vec)
- 
- pred_summ <- C_long |>
-   left_join(phi_df, by = ".draw") |>
-   group_by(t_idx) |>
-   summarize(
-     mu_median = median(C_expected),
-     yrep_q025 = quantile(rnbinom(n(), size = phi, mu = C_expected), 0.025),
-     yrep_q500 = quantile(rnbinom(n(), size = phi, mu = C_expected), 0.50),
-     yrep_q975 = quantile(rnbinom(n(), size = phi, mu = C_expected), 0.975),
-     .groups = "drop"
-   )
- 
- calendar |>
-   filter(s == s_idx) |>
-   select(t_idx, Area, year, Month, observed_case = case) |>
-   left_join(pred_summ, by = "t_idx") |>
-   mutate(
-     date = as.Date(sprintf("%d-%02d-01", year, Month)),
-     province = site_levels[s_idx]
-   )
-}
-```
-
-```{r ppc-plots}
-#| label: ppc-plots
-#| fig-cap: "Posterior predictive check: Observed (black points) vs predicted (blue ribbon = 95% PI)"
-#| fig-height: 10
-
-# Generate PPC for all provinces
-ppc_all <- map_dfr(seq_len(S), ppc_cases_by_province)
-
-ggplot(ppc_all, aes(x = date)) +
- geom_ribbon(aes(ymin = yrep_q025, ymax = yrep_q975), fill = "steelblue", alpha = 0.25) +
- geom_line(aes(y = yrep_q500), color = "steelblue", linewidth = 0.6) +
- geom_point(aes(y = observed_case), color = "black", size = 0.8, alpha = 0.5) +
- facet_wrap(~province, scales = "free_y", ncol = 2) +
- labs(x = NULL, y = "Reported Cases", 
-      title = "Posterior Predictive Check: Monthly Cases") +
- theme_bw(base_size = 11) +
- theme(strip.background = element_rect(fill = "grey90"))
-```
-
-------------------------------------------------------------------------
-
-## 3. Epidemiological Results
-
-### 3.1 Force of Infection Over Time
-
-```{r foi-extraction}
-#| label: foi-extraction
-
-extract_lambda_base <- function(probs = c(0.025, 0.5, 0.975)) {
- lambda_mat <- as.matrix(fit, pars = "lambda_base_ys")
- idx <- stringr::str_match(colnames(lambda_mat), "lambda_base_ys\\[(\\d+),(\\d+)\\]")
- 
- param_map <- tibble(
-   par = colnames(lambda_mat),
-   y_idx = as.integer(idx[, 2]),
-   s_idx = as.integer(idx[, 3])
- )
- 
- as_tibble(lambda_mat) |>
-   mutate(.draw = row_number()) |>
-   pivot_longer(cols = -.draw, names_to = "par", values_to = "lambda_base") |>
-   left_join(param_map, by = "par") |>
-   group_by(y_idx, s_idx) |>
-   summarize(
-     mean = mean(lambda_base),
-     q025 = quantile(lambda_base, probs[1]),
-     q500 = quantile(lambda_base, probs[2]),
-     q975 = quantile(lambda_base, probs[3]),
-     .groups = "drop"
-   ) |>
-   mutate(
-     province = site_levels[s_idx],
-     year = min(calendar$year) + y_idx - 1,
-     region = region_levels[s_idx]
-   )
-}
-
-lambda_data <- extract_lambda_base()
-```
-
-```{r foi-plot}
-#| label: foi-plot
-#| fig-cap: "Estimated baseline force of infection converted to yearly incidence per 100,000"
-
-lambda_data |>
- mutate(
-   yearly_mean = (1 - exp(-12 * mean)) * 1e5,
-   yearly_q025 = (1 - exp(-12 * q025)) * 1e5,
-   yearly_q975 = (1 - exp(-12 * q975)) * 1e5
- ) |>
- ggplot(aes(x = year, y = yearly_mean, color = province, fill = province)) +
- geom_ribbon(aes(ymin = yearly_q025, ymax = yearly_q975), alpha = 0.15, color = NA) +
- geom_line(linewidth = 0.8) +
- facet_wrap(~region, scales = "free_y", ncol = 2) +
- labs(
-   x = "Year", y = "Yearly Incidence per 100,000",
-   title = "Force of Infection → Yearly Incidence by Region"
- ) +
- theme_bw(base_size = 12) +
- theme(legend.position = "bottom")
-```
-
-### 3.2 Case Detection Sensitivity
-
-```{r sensitivity-plot}
-#| label: sensitivity-plot
-#| fig-cap: "Temporal evolution of case detection sensitivity by region"
-
-Se_mat <- as.matrix(fit, pars = "Se_y")
-idx <- stringr::str_match(colnames(Se_mat), "Se_y\\[(\\d+),(\\d+)\\]")
-
-Se_summ <- tibble(par = colnames(Se_mat), r_idx = as.integer(idx[, 2]), y_idx = as.integer(idx[, 3])) |>
- left_join(
-   as_tibble(Se_mat) |>
-     mutate(.draw = row_number()) |>
-     pivot_longer(cols = -.draw, names_to = "par", values_to = "Se"),
-   by = "par"
- ) |>
- group_by(r_idx, y_idx) |>
- summarize(
-   mean = mean(Se), q025 = quantile(Se, 0.025), q975 = quantile(Se, 0.975),
-   .groups = "drop"
- ) |>
- mutate(
-   year = min(calendar$year) + y_idx - 1,
-   region = paste0("Region ", r_idx)
- )
-
-ggplot(Se_summ, aes(x = year)) +
- geom_ribbon(aes(ymin = q025, ymax = q975), fill = "darkgreen", alpha = 0.3) +
- geom_line(aes(y = mean), color = "darkgreen", linewidth = 1) +
- facet_wrap(~region, ncol = 2) +
- scale_y_continuous(limits = c(0, 1), labels = percent) +
- labs(x = "Year", y = "Detection Sensitivity", 
-      title = "Case Detection Sensitivity Over Time") +
- theme_bw(base_size = 12)
-```
-
-### 3.3 Age-Specific Susceptibility
-
-```{r age-susceptibility}
-#| label: age-susceptibility
-#| fig-cap: "Relative susceptibility by age group (reference: 25-35 years = 1)"
-
-rho_mat <- as.matrix(fit, pars = "rho_pa")
-idx <- stringr::str_match(colnames(rho_mat), "rho_pa\\[(\\d+),(\\d+)\\]")
-
-rho_summ <- tibble(par = colnames(rho_mat), p_idx = as.integer(idx[, 2]), a_idx = as.integer(idx[, 3])) |>
- left_join(
-   as_tibble(rho_mat) |> mutate(.draw = row_number()) |>
-     pivot_longer(cols = -.draw, names_to = "par", values_to = "rho"),
-   by = "par"
- ) |>
- group_by(p_idx, a_idx) |>
- summarize(
-   mean = mean(rho), q025 = quantile(rho, 0.025), q975 = quantile(rho, 0.975),
-   .groups = "drop"
- ) |>
- mutate(
-   period = paste0("Period ", p_idx),
-   age_group = age_levels[a_idx]
- )
-
-ggplot(rho_summ, aes(x = age_group, y = mean, fill = period)) +
- geom_col(position = position_dodge(width = 0.8), width = 0.7) +
- geom_errorbar(aes(ymin = q025, ymax = q975), 
-               position = position_dodge(width = 0.8), width = 0.3) +
- geom_hline(yintercept = 1, linetype = "dashed", color = "red") +
- scale_fill_viridis_d(option = "cividis") +
- labs(x = "Age Group", y = "Relative Susceptibility (ρ)", 
-      title = "Age-Specific Relative Susceptibility") +
- theme_bw(base_size = 12) +
- theme(axis.text.x = element_text(angle = 45, hjust = 1))
-```
-
-### 3.4 Case-Fatality Rate by Age
-
-```{r cfr-plot}
-#| label: cfr-plot
-#| fig-cap: "Estimated case-fatality rate by age group and period"
-
-CFR_mat <- as.matrix(fit, pars = "CFR_pa")
-idx <- stringr::str_match(colnames(CFR_mat), "CFR_pa\\[(\\d+),(\\d+)\\]")
-
-CFR_summ <- tibble(par = colnames(CFR_mat), p_idx = as.integer(idx[, 2]), a_idx = as.integer(idx[, 3])) |>
- left_join(
-   as_tibble(CFR_mat) |> mutate(.draw = row_number()) |>
-     pivot_longer(cols = -.draw, names_to = "par", values_to = "CFR"),
-   by = "par"
- ) |>
- group_by(p_idx, a_idx) |>
- summarize(
-   mean = mean(CFR), q025 = quantile(CFR, 0.025), q975 = quantile(CFR, 0.975),
-   .groups = "drop"
- ) |>
- mutate(
-   period = paste0("Period ", p_idx),
-   age_group = factor(age_levels[a_idx], levels = age_levels)
- )
-
-ggplot(CFR_summ, aes(x = age_group, y = mean * 100, color = period, group = period)) +
- geom_point(size = 3, position = position_dodge(width = 0.5)) +
- geom_errorbar(aes(ymin = q025 * 100, ymax = q975 * 100), 
-               width = 0.3, position = position_dodge(width = 0.5)) +
- geom_line(position = position_dodge(width = 0.5), alpha = 0.5) +
- scale_color_viridis_d(option = "magma", end = 0.8) +
- labs(x = "Age Group", y = "Case-Fatality Rate (%)", 
-      title = "Case-Fatality Rate by Age and Period") +
- theme_bw(base_size = 12) +
- theme(axis.text.x = element_text(angle = 45, hjust = 1))
-```
-
-------------------------------------------------------------------------
-
-## 4. Seasonality Patterns
-
-```{r seasonality}
-#| label: seasonality
-#| fig-cap: "Estimated seasonal multiplier by month and province"
-
-# Extract seasonal multiplier if available
-if ("seasonal_multiplier" %in% fit@sim$pars_oi) {
- seas_mat <- as.matrix(fit, pars = "seasonal_multiplier")
- idx <- stringr::str_match(colnames(seas_mat), "seasonal_multiplier\\[(\\d+),(\\d+),(\\d+)\\]")
- 
- seas_summ <- tibble(
-   par = colnames(seas_mat),
-   m_idx = as.integer(idx[, 2]),
-   p_idx = as.integer(idx[, 3]),
-   s_idx = as.integer(idx[, 4])
- ) |>
-   left_join(
-     as_tibble(seas_mat) |> mutate(.draw = row_number()) |>
-       pivot_longer(cols = -.draw, names_to = "par", values_to = "mult"),
-     by = "par"
-   ) |>
-   group_by(m_idx, p_idx, s_idx) |>
-   summarize(mean = mean(mult), .groups = "drop") |>
-   mutate(
-     month = factor(month.abb[m_idx], levels = month.abb),
-     province = site_levels[s_idx],
-     period = paste0("Period ", p_idx)
-   )
- 
- ggplot(seas_summ |> filter(p_idx == 1), aes(x = month, y = mean, group = province, color = province)) +
-   geom_line(linewidth = 0.8) +
-   geom_point(size = 2) +
-   geom_hline(yintercept = 1, linetype = "dashed", color = "grey50") +
-   labs(x = "Month", y = "Seasonal Multiplier", 
-        title = "Seasonal Pattern by Province (Period 1)") +
-   theme_bw(base_size = 12)
-} else {
- cat("Seasonal multiplier not available in model output.")
-}
-```
-
-------------------------------------------------------------------------
-
-## 5. Summary Statistics
-
-```{r summary-table}
-#| label: summary-table
-
-# Create summary of key epidemiological estimates
-tibble(
- Metric = c(
-   "Mean baseline FOI (monthly)",
-   "Mean detection sensitivity",
-   "Mean CFR (all ages)",
-   "Case dispersion (φ)",
-   "Death dispersion (φ)"
- ),
- Estimate = c(
-   sprintf("%.2e", mean(lambda_data$mean)),
-   sprintf("%.1f%%", mean(Se_summ$mean) * 100),
-   sprintf("%.2f%%", mean(CFR_summ$mean) * 100),
-   sprintf("%.2f", mean(as.matrix(fit, pars = "phi_case"))),
-   sprintf("%.2f", mean(as.matrix(fit, pars = "phi_death")))
- )
-) |>
- kable(caption = "Summary of key model estimates")
-```
-
-------------------------------------------------------------------------
-
-## Session Info
-
-```{r session-info}
-#| label: session-info
-
-sessionInfo()
 ```

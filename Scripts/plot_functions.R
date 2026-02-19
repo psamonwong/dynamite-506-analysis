@@ -976,3 +976,56 @@ cfr_plot <- function(fit, age_levels, period_labels = c("2003 to 2007", "2008 to
     theme_bw(base_size = 14) +
     coord_flip()
 }
+################################################################################
+ppc_cases_by_province <- function(s_idx) {
+  stopifnot(exists("fit"), exists("calendar"), exists("S"), exists("T"), exists("site_levels"))
+  if (!(s_idx %in% seq_len(S))) stop("s_idx out of range 1..S")
+
+  # Extract draws from Model2_simple: C_ts (expected observed cases)
+  C_mat <- as.matrix(fit, pars = "C_ts")
+  phi_vec <- as.numeric(as.matrix(fit, pars = "phi_case"))
+  if (is.null(colnames(C_mat))) stop("C_ts columns have no names; re-run sampling with pars='C_ts'.")
+
+  # Parse indices from column names [t,s]
+  idx <- stringr::str_match(colnames(C_mat), "C_ts\\[(\\d+),(\\d+)\\]")
+  if (any(is.na(idx))) stop("Failed to parse C_ts indices from column names.")
+  t_idx_col <- as.integer(idx[, 2])
+  s_idx_col <- as.integer(idx[, 3])
+
+  param_map <- tibble::tibble(par = colnames(C_mat), t_idx = t_idx_col, s = s_idx_col) |>
+    dplyr::filter(s == s_idx)
+
+  C_long <- tibble::as_tibble(C_mat[, param_map$par, drop = FALSE]) |>
+    dplyr::mutate(.draw = dplyr::row_number()) |>
+    tidyr::pivot_longer(cols = - .draw, names_to = "par", values_to = "C_expected") |>
+    dplyr::left_join(param_map, by = "par")
+
+  phi_df <- tibble::tibble(.draw = seq_len(nrow(C_mat)), phi = phi_vec)
+
+  # Summarize PPC for this province over time
+  pred_summ <- C_long |>
+    dplyr::left_join(phi_df, by = ".draw") |>
+    dplyr::group_by(t_idx) |>
+    dplyr::summarize(
+      mu_mean   = mean(C_expected),
+      mu_median = median(C_expected),
+      mu_q025   = stats::quantile(C_expected, 0.025, names = FALSE),
+      mu_q975   = stats::quantile(C_expected, 0.975, names = FALSE),
+      yrep_q025 = stats::quantile(stats::rnbinom(n = dplyr::n(), size = phi, mu = C_expected), 0.025, names = FALSE),
+      yrep_q500 = stats::quantile(stats::rnbinom(n = dplyr::n(), size = phi, mu = C_expected), 0.50, names = FALSE),
+      yrep_q975 = stats::quantile(stats::rnbinom(n = dplyr::n(), size = phi, mu = C_expected), 0.975, names = FALSE),
+      .groups = "drop"
+    )
+
+  # Observed cases for this province
+  obs <- calendar |>
+    dplyr::filter(s == s_idx) |>
+    dplyr::select(t_idx, Area, year, Month, observed_case = case)
+
+  # Final PPC dataset for the province
+  obs |>
+    dplyr::left_join(pred_summ, by = "t_idx") |>
+    dplyr::arrange(year, Month) |>
+    dplyr::mutate(province_index = s_idx, province = site_levels[s_idx]) |>
+    dplyr::mutate(date = as.Date(sprintf("%d-%02d-01", year, Month)))
+}
