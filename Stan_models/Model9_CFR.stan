@@ -241,7 +241,7 @@ transformed parameters {
     int t_start = (y_ind - 1) * M + 1;
     int t_end = y_ind * M;
     for(s_ind in 1:S){
-      lambda_year_ys[y_ind, s_ind] = mean(lambda_ts[t_start:t_end, s_ind]);
+      lambda_year_ys[y_ind, s_ind] = sum(lambda_ts[t_start:t_end, s_ind]);
     }
   }
 
