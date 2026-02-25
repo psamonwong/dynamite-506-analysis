@@ -35,6 +35,7 @@ library(ggspatial)
 library(ggh4x)
 library(cowplot)
 library(patchwork)
+library(biscale)
 
 
 source(here("Scripts", "data_prep_functions.R"))
@@ -441,13 +442,13 @@ for (s_idx in seq_len(S)) {
 }
 
 # Arrange plots in 3x4 grids and export each page as PNG
-plots_per_page <- 9
+plots_per_page <- 4
 n_pages <- ceiling(S / plots_per_page)
 for (i in seq_len(n_pages)) {
   idx_start <- (i - 1) * plots_per_page + 1
   idx_end <- min(i * plots_per_page, S)
   plots_this_page <- plot_list[idx_start:idx_end]
-  arranged <- ggarrange(plotlist = plots_this_page, ncol = 3, nrow = 3)
+  arranged <- ggarrange(plotlist = plots_this_page, ncol = 2, nrow = 2)
   png(here("Plots", "predictive_check", dataset, sprintf("predictive_check_page%02d.png", i)), width = 16, height = 12, units = "in", res = 300)
   print(arranged)
   dev.off()
