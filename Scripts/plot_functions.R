@@ -968,7 +968,9 @@ summarise_cfr <- function(fit, age_levels, ref_age = "25 to 35") {
     )
 }
 
-plot_cfr <- function(CFR_summ, age_levels, period_labels = c("2003 to 2007", "2008 to 2012", "2013 to 2018", "2019 to 2024"), ref_age = "25 to 35") {
+plot_cfr <- function(CFR_summ, age_levels, 
+  period_labels = c("2003 to 2007", "2008 to 2012", "2013 to 2018", "2019 to 2024"), 
+  ref_age = "25 to 35") {
   CFR_summ |>
     mutate(
       age_group = factor(age_group, levels = age_levels),

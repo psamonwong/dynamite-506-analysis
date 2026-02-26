@@ -37,7 +37,7 @@ fit <- rstan::sampling(
   chains = model_settings$chains, 
   thin = model_settings$thin, 
   seed = 1234L, 
-  refresh = max(1, model_settings$iter * 0.05), 
+  refresh = max(1, model_settings$iter * 0.01), 
   control = list(adapt_delta = 0.95, max_treedepth = 12),
   init = function() init_fun(stan_data),
   pars = c(

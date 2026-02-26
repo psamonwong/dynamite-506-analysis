@@ -72,7 +72,7 @@ n_harmonics <- 3
 sero_years <- c(2007, 2008, 2012)
 
 # Fixed epidemiological parameters
-omega <- 0.1882           # immune waning rate
+omega <- 1/(22.3/12)           # per month, so approximately 0.1882*12 = 2.2584 per year, corresponding to an average infectious period of about 1/omega = 5.3 months
 nu <- 0.15                # clinical sign probability
 sigma_lambda_0 <- 0.1     # baseline FOI variation
 sigma_lambda_y <- 0.122   # year-to-year FOI variation
