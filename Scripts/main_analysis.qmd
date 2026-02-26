@@ -231,6 +231,72 @@ dev.off()
 }
 ```
 
+### Summary of Figure 1 components
+
+```{r}
+# Nationwide case and deaths reports
+case_data %>%
+  summarise(Total_Cases = sum(case)) %>%
+  print()
+```
+
+```{r}
+case_data %>%
+  group_by(Area) %>%
+  summarise(Total_Cases = sum(case)) %>%
+  arrange(desc(Total_Cases)) %>%
+  print()
+```
+
+```{r}
+case_data %>%
+  group_by(Zone) %>%
+  summarise(Total_Cases = sum(case)) %>%
+  mutate(Percent_Cases = 100 * Total_Cases / sum(Total_Cases)) %>%
+  arrange(desc(Total_Cases))
+```
+
+```{r}
+# Nationwide case and deaths reports
+case_data %>%
+  summarise(Total_deaths = sum(death)) %>%
+  print()
+```
+
+```{r}
+# Nationwide case and deaths reports
+case_data %>%
+  group_by(Area) %>%
+  summarise(Total_deaths = sum(death)) %>%
+  arrange(desc(Total_deaths)) %>%
+  print()
+```
+
+```{r}
+case_data %>%
+  group_by(year) %>%
+  summarise(Total_cases = sum(case),
+            Total_deaths = sum(death)) %>%
+  arrange(desc(year)) %>%
+  print()
+```
+
+```{r}
+case_age_data %>%
+  group_by(age_group_new) %>%
+  summarise(
+    Total_cases = sum(case),
+    Total_deaths = sum(death)
+  ) %>%
+  mutate(
+    Percent_cases = 100 * Total_cases / sum(Total_cases),
+    Percent_deaths = 100 * Total_deaths / sum(Total_deaths)
+  ) %>%
+  arrange(desc(Percent_deaths))
+```
+
+
+
 ## Figure 2: Estimated FOI by province
 
 ### Extract FOI estimates, aggregated monthly to yearly
@@ -372,10 +438,32 @@ dev.off()
 ```
 .
 
+```{r}
+seasonality_indices %>%
+  group_by(region) %>%
+  summarise(n_clusters = n_distinct(clusters)) %>%
+  filter(n_clusters == 1) %>%
+  summarise(count = n())
+```
+
+```{r}
+seasonality_indices %>%
+  group_by(period, clusters) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(period) %>%
+  mutate(proportion = n / sum(n)) %>%
+  arrange(period, clusters)
+```
+
 ## Figure 4: Case detection sensitivity
 
 ```{r}
-g_case_sensitivity <- plot_Se_over_time(map_data = map_data) 
+Se_summ <- summarise_Se_over_time()
+str(Se_summ)
+```
+
+```{r}
+g_case_sensitivity <- plot_Se_over_time(Se_summ = Se_summ, map_data = map_data) 
 print(g_case_sensitivity)
 ```
 
@@ -387,19 +475,56 @@ dev.off()
 }
 ```
 
+```{r}
+Se_summ %>%
+  filter(region == "Health Region 11") %>%
+  print(n = Inf)
+```
+
+```{r}
+Se_summ %>%
+  filter(year == 2024) %>%
+  arrange(q500) %>%
+  print(n = Inf)
+```
+
 ## Figure 5: Age specific susceptibility and case-fatality rate
 
 ### 5.1 Age susceptibility
+
 ```{r}
-g_age_susceptibility <- plot_relative_susceptibility(fit, age_levels, ref_age = ref_age_label)
+rho_summ <- summarise_relative_susceptibility(fit = fit, age_levels = age_levels)
+str(rho_summ)
+```
+
+```{r}
+g_age_susceptibility <- plot_relative_susceptibility(rho_summ = rho_summ, age_levels = age_levels)
 print(g_age_susceptibility)
+```
+
+```{r}
+rho_summ %>%
+  filter(a_idx %in% 8) %>%
+  print(n = Inf)
 ```
 
 ### 5.2 Case-fatality rate
 
 ```{r}
-g_cfr <- cfr_plot(fit, age_levels)
+CFR_summ <- summarise_cfr(fit = fit, age_levels = age_levels)
+str(CFR_summ)
+```
+
+```{r}
+g_cfr <- plot_cfr(CFR_summ = CFR_summ, age_levels = age_levels)
 print(g_cfr)
+```
+
+```{r}
+CFR_summ %>%
+  filter(a_idx %in% 4) %>%
+  mutate(mean = 100 * mean, q025 = 100 * q025, q975 = 100 * q975) %>%
+  print(n = Inf)
 ```
 
 ```{r}
@@ -415,6 +540,13 @@ print(combined_age_plot)
 dev.off()
 }
 ```
+
+```{r}
+CFR_summ %>%
+  filter(a_idx == 8) %>%
+  print(n = Inf)
+```
+
 
 ## Posterior predictive checks and additional diagnostics
 

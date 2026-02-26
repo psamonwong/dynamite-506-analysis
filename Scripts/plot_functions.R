@@ -800,34 +800,35 @@ plot_seasonality_alluvial <- function(seasonality_indices,
 }
 ################################################################################
 # Extract and plot Se_y over time
-plot_Se_over_time <- function(probs = c(0.025, 0.5, 0.975), map_data) {
+
+summarise_Se_over_time <- function(probs = c(0.025, 0.5, 0.975)) {
   stopifnot(exists("fit"), exists("stan_data"), exists("calendar"))
   Y <- stan_data$Y
-  
+
   # Extract Se_y draws [Y]
   Se_mat <- as.matrix(fit, pars = "Se_y")
   if (is.null(colnames(Se_mat))) stop("Se_y columns have no names; re-run sampling with pars='Se_y'.")
-  
-  # Parse indices from column names [y]
+
+  # Parse indices from column names [y, r]
   idx <- stringr::str_match(colnames(Se_mat), "Se_y\\[(\\d+),(\\d+)\\]")
   if (any(is.na(idx))) stop("Failed to parse Se_y indices from column names.")
   y_idx_col <- as.integer(idx[, 3])
   r_idx_col <- as.integer(idx[, 2])
- 
+
   # Create parameter map
   param_map <- tibble::tibble(
     par = colnames(Se_mat), 
     y_idx = y_idx_col,
     r_idx = r_idx_col
   )
-  
+
   # Convert to long format
   Se_long <- tibble::as_tibble(Se_mat) |>
     dplyr::mutate(.draw = dplyr::row_number()) |>
     tidyr::pivot_longer(cols = -.draw, names_to = "par", values_to = "Se") |>
     dplyr::left_join(param_map, by = "par")
-  
-  # Summarize by year
+
+  # Summarize by year and region
   Se_summ <- Se_long |>
     dplyr::group_by(y_idx, r_idx) |>
     dplyr::summarize(
@@ -845,32 +846,34 @@ plot_Se_over_time <- function(probs = c(0.025, 0.5, 0.975), map_data) {
         levels = paste0("Health Region ", sort(unique(r_idx)))
       )
     )
+  Se_summ
+}
 
-# Plot
-se_trend <- ggplot(Se_summ, aes(x = year)) +
-  annotate(
-    "rect",
-    xmin = 2020, xmax = 2022,
-    ymin = 0, ymax = 1,
-    fill = "#CB80AB", alpha = 0.6
-  ) +
-  geom_ribbon(aes(ymin = q025, ymax = q975), fill = "#295F98", alpha = 0.3) +
-  geom_line(aes(y = q500), color = "#295F98", linewidth = 1) +
-  geom_point(aes(y = q500), color = "#295F98", size = 1.2) +
-  labs(
-    x = "Year",
-    y = "Case Detection Sensitivity",
-    title = "Temporal evolution of case detection sensitivity",
-  ) +
-  scale_y_continuous(limits = c(0, 1)) +
-  theme_bw(base_size = 14) +
-  theme(panel.grid.minor = element_blank(),
-        axis.title.x = element_blank()) +
-  facet_wrap(.~region, ncol = 3) 
-  
-   map_se <- map_data %>%
+plot_Se_over_time <- function(Se_summ, map_data) {
+  se_trend <- ggplot(Se_summ, aes(x = year)) +
+    annotate(
+      "rect",
+      xmin = 2020, xmax = 2022,
+      ymin = 0, ymax = 1,
+      fill = "#CB80AB", alpha = 0.6
+    ) +
+    geom_ribbon(aes(ymin = q025, ymax = q975), fill = "#295F98", alpha = 0.3) +
+    geom_line(aes(y = q500), color = "#295F98", linewidth = 1) +
+    geom_point(aes(y = q500), color = "#295F98", size = 1.2) +
+    labs(
+      x = "Year",
+      y = "Case Detection Sensitivity",
+      title = "Temporal evolution of case detection sensitivity"
+    ) +
+    scale_y_continuous(limits = c(0, 1)) +
+    theme_bw(base_size = 14) +
+    theme(panel.grid.minor = element_blank(),
+          axis.title.x = element_blank()) +
+    facet_wrap(.~region, ncol = 3) 
+
+  map_se <- map_data %>%
     left_join(
-      Se_summ %>% filter(year == 2024),
+      Se_summ %>% filter(year == max(Se_summ$year)),
       by = "Zone"
     ) %>%
     ggplot() +
@@ -880,25 +883,23 @@ se_trend <- ggplot(Se_summ, aes(x = year)) +
       colours = c("#f7fbff", "#6baed6", "#08306b"),
       limits = c(0, 1)
     ) +   
-     coord_sf(xlim = c(96, 106), ylim = c(5, 21), expand = FALSE) +
+    coord_sf(xlim = c(96, 106), ylim = c(5, 21), expand = FALSE) +
     theme_void() +
     theme(axis.text = element_blank(),
           legend.position = "right") +
-    labs(caption = "Estimated case detection sensitivity\nby health region (2024)") +
+    labs(caption = "Estimated case detection sensitivity\nby health region (latest year)") +
     theme(plot.caption = element_text(hjust = 0.5, vjust = 10, size = 12, face = "bold")) + 
-     plot_annotation(theme = theme(plot.margin = margin(0.5, 0.5, 0.5, 0.5)))
+    plot_annotation(theme = theme(plot.margin = margin(0.5, 0.5, 0.5, 0.5)))
 
-
-  combined_se_plot <- se_trend + map_se + plot_layout(ncol = 2, widths  = c(2, 1)) 
+  combined_se_plot <- se_trend + map_se + patchwork::plot_layout(ncol = 2, widths  = c(2, 1)) 
   combined_se_plot + plot_annotation(theme = theme(plot.margin = margin(0.2, 0.2, 0.2, 0.2))) 
 }
-################################################################################
 
-plot_relative_susceptibility <- function(fit, age_levels, ref_age = "25 to 35") {
+################################################################################
+summarise_relative_susceptibility <- function(fit, age_levels) {
   rho_mat <- as.matrix(fit, pars = "rho_pa")
   idx <- stringr::str_match(colnames(rho_mat), "rho_pa\\[(\\d+),(\\d+)\\]")
-  
-  rho_summ <- tibble(par = colnames(rho_mat), p_idx = as.integer(idx[, 2]), a_idx = as.integer(idx[, 3])) |>
+  tibble(par = colnames(rho_mat), p_idx = as.integer(idx[, 2]), a_idx = as.integer(idx[, 3])) |>
     left_join(
       as_tibble(rho_mat) |> mutate(.draw = row_number()) |>
         pivot_longer(cols = -.draw, names_to = "par", values_to = "rho"),
@@ -913,7 +914,9 @@ plot_relative_susceptibility <- function(fit, age_levels, ref_age = "25 to 35") 
       period = paste0("Period ", p_idx),
       age_group = age_levels[a_idx]
     )
-  
+}
+
+plot_relative_susceptibility <- function(rho_summ, age_levels, ref_age = "25 to 35") {
   rho_summ |>
     mutate(
       age_group = factor(age_group, levels = age_levels),
@@ -939,33 +942,33 @@ plot_relative_susceptibility <- function(fit, age_levels, ref_age = "25 to 35") 
 }
 ################################################################################
 
-cfr_plot <- function(fit, age_levels, period_labels = c("2003 to 2007", "2008 to 2012", "2013 to 2018", "2019 to 2024"), ref_age = "25 to 35") {
+summarise_cfr <- function(fit, age_levels, ref_age = "25 to 35") {
   CFR_mat <- as.matrix(fit, pars = "CFR_pa")
   idx <- stringr::str_match(colnames(CFR_mat), "CFR_pa\\[(\\d+),(\\d+)\\]")
-  
   ref_age_idx <- which(age_levels == ref_age)
-
-  CFR_summ <-    tibble(par = colnames(CFR_mat), p_idx = as.integer(idx[, 2]), a_idx = as.integer(idx[, 3])) |>
-      left_join(
-        as_tibble(CFR_mat) |> mutate(.draw = row_number()) |>
-          pivot_longer(cols = -.draw, names_to = "par", values_to = "CFR"),
-        by = "par"
-      ) |>
-      group_by(.draw, p_idx) |>
-      mutate(ref_CFR = CFR[a_idx == ref_age_idx],
-             rel_CFR = CFR/ref_CFR) |>
-      ungroup() |>
-      group_by(p_idx, a_idx) |>
-      summarize(
-        mean_rel_CFR = mean(rel_CFR), q025_ref_CFR = quantile(rel_CFR, 0.025), q975_rel_CFR = quantile(rel_CFR, 0.975),
-        mean = mean(CFR), q025 = quantile(CFR, 0.025), q975 = quantile(CFR, 0.975),
-        .groups = "drop"
-      ) |>
+  tibble(par = colnames(CFR_mat), p_idx = as.integer(idx[, 2]), a_idx = as.integer(idx[, 3])) |>
+    left_join(
+      as_tibble(CFR_mat) |> mutate(.draw = row_number()) |>
+        pivot_longer(cols = -.draw, names_to = "par", values_to = "CFR"),
+      by = "par"
+    ) |>
+    group_by(.draw, p_idx) |>
+    mutate(ref_CFR = CFR[a_idx == ref_age_idx],
+           rel_CFR = CFR / ref_CFR) |>
+    ungroup() |>
+    group_by(p_idx, a_idx) |>
+    summarize(
+      mean_rel_CFR = mean(rel_CFR), q025_ref_CFR = quantile(rel_CFR, 0.025), q975_rel_CFR = quantile(rel_CFR, 0.975),
+      mean = mean(CFR), q025 = quantile(CFR, 0.025), q975 = quantile(CFR, 0.975),
+      .groups = "drop"
+    ) |>
     mutate(
       period = paste0("Period ", p_idx),
       age_group = factor(age_levels[a_idx], levels = age_levels)
     )
-  
+}
+
+plot_cfr <- function(CFR_summ, age_levels, period_labels = c("2003 to 2007", "2008 to 2012", "2013 to 2018", "2019 to 2024"), ref_age = "25 to 35") {
   CFR_summ |>
     mutate(
       age_group = factor(age_group, levels = age_levels),
@@ -974,12 +977,12 @@ cfr_plot <- function(fit, age_levels, period_labels = c("2003 to 2007", "2008 to
     filter(age_group != ref_age) |>
     ggplot() +
     geom_abline(intercept = 1, slope = 0, linetype = "21", color = "gray30", linewidth = 1, alpha = 0.7) +
-    geom_point(aes(x = age_group, y =mean_rel_CFR, color = period), size = 3, alpha = 0.8,
+    geom_point(aes(x = age_group, y = mean_rel_CFR, color = period), size = 3, alpha = 0.8,
                position = position_dodge(width = 0.5)) +
-    geom_errorbar(aes(x = age_group, ymin =q025_ref_CFR, ymax = q975_rel_CFR, color = period), alpha = 0.8,
+    geom_errorbar(aes(x = age_group, ymin = q025_ref_CFR, ymax = q975_rel_CFR, color = period), alpha = 0.8,
                   width = 0, position = position_dodge(width = 0.5), linewidth = 1.1) +
     scale_color_viridis_d(option = "magma", end = 0.8, name = "") +
-    labs(x = "", y = "Relative case-fatality rate", title = "Relative case-fatality rate\n(relative to 25 to 35 years)") +
+    labs(x = "", y = "Relative case-fatality rate", title = paste0("Relative case-fatality rate\n(relative to ", ref_age, " years)")) +
     theme_bw(base_size = 14) +
     scale_y_continuous(breaks = seq(0, 10, by = 1)) +
     coord_flip() +
