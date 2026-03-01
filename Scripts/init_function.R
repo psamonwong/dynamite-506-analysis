@@ -43,6 +43,9 @@ init_fun <- function(stan_data) {
     log_rho_pa = array(rnorm(P*A, 0, 0.1), c(P, A)),
     sigma_rho = abs(rnorm(1, 0.1, 0.05)),
 
+    phi_case = runif(1,4,6),
+    phi_death = runif(1,1,4),
+
     # Background hazard
     H0_s = rexp(S, 1)
   )
