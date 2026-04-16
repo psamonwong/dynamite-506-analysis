@@ -227,7 +227,7 @@ print(combined)
 ```{r}
 if(export_plot){
 png(here("Plots", "Figure1.png"), width = 15, height = 10, units = "in", res = 300)
-combined
+print(combined)
 dev.off()
 }
 ```
@@ -328,7 +328,7 @@ p_bivar <- make_bivar_map(
             map_data, 
             year0 = 2003, year1 = 2024, 
             legend_bbox = c(xmin = 101.0, xmax = 105.3, ymin = 7.5, ymax = 11.7),
-            pal = "DkBlue", 
+            pal = "BlueYl", 
             subtitle = "")
 print(p_bivar)
 ```
@@ -484,7 +484,7 @@ Se_summ %>%
 
 ```{r}
 Se_summ %>%
-  filter(year == 2024) %>%
+  filter(year == 2010) %>%
   arrange(q500) %>%
   print(n = Inf)
 ```
@@ -544,7 +544,7 @@ dev.off()
 
 ```{r}
 CFR_summ %>%
-  filter(a_idx == 8) %>%
+  filter(a_idx %in% 1:3) %>%
   print(n = Inf)
 ```
 
