@@ -403,10 +403,16 @@ class_tbl <- lambda_inc |>
 
   group_labels <- pals$inc_group_combo
 
-  core_cols <- c(
-    "#e8e8e8", "#ace4e4", "#5ac8c8",
-    "#dfb0d6", "#a5add3", "#5698b9",
-    "#be64ac", "#8c62aa", "#3b4994"
+  # core_cols <- c(
+  #   "#e8e8e8", "#ace4e4", "#5ac8c8",
+  #   "#dfb0d6", "#a5add3", "#5698b9",
+  #   "#be64ac", "#8c62aa", "#3b4994"
+  # )
+
+      core_cols <- c(
+    "#D3D3D3", "#D6CB7D", "#D9BE00",
+    "#74B1D6", "#76AB7E", "#78A000",
+    "#0088D9", "#008380", "#007B00"
   )
 
   pal_cols <- setNames(core_cols[seq_along(group_labels)], group_labels)
@@ -483,7 +489,7 @@ make_bivar_map <- function(lambda_data,
                                               year1 = 2024,
                                               foi_breaks = c(-Inf, 100, 1000, Inf),
                                               foi_labels = c("< 100", "100-1000", "> 1000"),
-                                              pal = "DkBlue",
+                                              pal = "DkViolet",
                                               subtitle = "Bivariate choropleth: 2003 vs 2024 (median FOI)",
                                               legend_bbox = c(xmin = 101.0, xmax = 104.3, ymin = 8.0, ymax = 11.2)) {
   stopifnot(length(foi_breaks) == length(foi_labels) + 1)
@@ -533,8 +539,8 @@ make_bivar_map <- function(lambda_data,
 legend_plot <- biscale::bi_legend(
     pal = pal,
     dim = length(foi_labels),
-    xlab = paste0("Incidence in ", year0),
-    ylab = paste0("Incidence in ", year1),
+    xlab = paste0("High incidence in ", year0),
+    ylab = paste0("High incidence in ", year1),
   ) +
     scale_x_continuous(breaks = seq_along(foi_labels),
                        labels = foi_labels,
