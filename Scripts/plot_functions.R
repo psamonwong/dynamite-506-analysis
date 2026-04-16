@@ -410,9 +410,9 @@ class_tbl <- lambda_inc |>
   # )
 
       core_cols <- c(
-    "#D3D3D3", "#D6CB7D", "#D9BE00",
-    "#74B1D6", "#76AB7E", "#78A000",
-    "#0088D9", "#008380", "#007B00"
+    "#d3d3d3", "#8aa6c2", "#4279b0",
+    "#ba8890", "#7a6b84", "#3a4e78",
+    "#9e3547", "#682a41", "#311e3b"
   )
 
   pal_cols <- setNames(core_cols[seq_along(group_labels)], group_labels)
@@ -490,6 +490,7 @@ make_bivar_map <- function(lambda_data,
                                               foi_breaks = c(-Inf, 100, 1000, Inf),
                                               foi_labels = c("< 100", "100-1000", "> 1000"),
                                               pal = "DkViolet",
+                                              flip_axes = FALSE,
                                               subtitle = "Bivariate choropleth: 2003 vs 2024 (median FOI)",
                                               legend_bbox = c(xmin = 101.0, xmax = 104.3, ymin = 8.0, ymax = 11.2)) {
   stopifnot(length(foi_breaks) == length(foi_labels) + 1)
@@ -510,7 +511,7 @@ make_bivar_map <- function(lambda_data,
       inc_1_cat = cut(inc_1, breaks = foi_breaks, labels = foi_labels, include.lowest = TRUE, right = TRUE),
       bi_ix_x = as.integer(inc_0_cat),
       bi_ix_y = as.integer(inc_1_cat),
-      bi_class = paste0(bi_ix_x, "-", bi_ix_y)
+      bi_class = if (flip_axes) paste0(bi_ix_y, "-", bi_ix_x) else paste0(bi_ix_x, "-", bi_ix_y)
     )
 
   map_bi <- map_data |>
@@ -539,8 +540,8 @@ make_bivar_map <- function(lambda_data,
 legend_plot <- biscale::bi_legend(
     pal = pal,
     dim = length(foi_labels),
-    xlab = paste0("High incidence in ", year0),
-    ylab = paste0("High incidence in ", year1),
+    xlab = if (flip_axes) paste0("High incidence in ", year1) else paste0("High incidence in ", year0),
+    ylab = if (flip_axes) paste0("High incidence in ", year0) else paste0("High incidence in ", year1),
   ) +
     scale_x_continuous(breaks = seq_along(foi_labels),
                        labels = foi_labels,
@@ -868,8 +869,8 @@ plot_Se_over_time <- function(Se_summ, map_data) {
     geom_point(aes(y = q500), color = "#295F98", size = 1.2) +
     labs(
       x = "Year",
-      y = "Case Detection Sensitivity",
-      title = "Temporal evolution of case detection sensitivity"
+      y = "Reporting proportion",
+      title = "Temporal evolution of reporting proportion"
     ) +
     scale_y_continuous(limits = c(0, 1)) +
     theme_bw(base_size = 14) +
@@ -893,7 +894,7 @@ plot_Se_over_time <- function(Se_summ, map_data) {
     theme_void() +
     theme(axis.text = element_blank(),
           legend.position = "right") +
-    labs(caption = "Estimated case detection sensitivity\nby health region (latest year)") +
+    labs(caption = "Estimated reporting proportion\nby health region (latest year)") +
     theme(plot.caption = element_text(hjust = 0.5, vjust = 10, size = 12, face = "bold")) + 
     plot_annotation(theme = theme(plot.margin = margin(0.5, 0.5, 0.5, 0.5)))
 
@@ -1049,4 +1050,347 @@ ppc_cases_by_province <- function(s_idx) {
     dplyr::arrange(year, Month) |>
     dplyr::mutate(province_index = s_idx, province = site_levels[s_idx]) |>
     dplyr::mutate(date = as.Date(sprintf("%d-%02d-01", year, Month)))
+}
+
+################################################################################
+# Supplementary: comprehensive per-province diagnostic figure
+# Panels: A) Cases PPC  B) Inset map  C) Seasonality  D) Age dist  E) Deaths PPC
+
+build_province_summary <- function(lambda_data, Se_summ, seasonality_indices,
+                                    map_data, calendar, stan_data,
+                                    period_labels = c("2003-2007", "2008-2012",
+                                                      "2013-2018", "2019-2024")) {
+  S <- stan_data$S
+  region_id <- stan_data$region_id
+
+  purrr::map_dfr(seq_len(S), function(s) {
+    prov <- site_levels[s]
+    zone <- map_data |> dplyr::filter(Provinc == prov) |> dplyr::pull(Zone)
+    hr <- zone_to_hr(zone)
+    r <- region_id[s]
+
+    # PI coverage from PPC
+    ppc <- ppc_cases_by_province(s)
+    pi_cov <- mean(ppc$observed_case >= ppc$yrep_q025 &
+                   ppc$observed_case <= ppc$yrep_q975, na.rm = TRUE)
+
+    # Reporting rate (Se) for the province's region, most recent year
+    se_prov <- Se_summ |>
+      dplyr::filter(r_idx == r) |>
+      dplyr::filter(year == max(year))
+    se_med <- 100 * se_prov$q500
+    se_lo  <- 100 * se_prov$q025
+    se_hi  <- 100 * se_prov$q975
+
+    # FOI for latest period — median across years in that period
+    foi_prov <- lambda_data |>
+      dplyr::filter(province == prov, year >= 2019) |>
+      dplyr::summarize(q500 = median(q500), q025 = median(q025), q975 = median(q975))
+
+    # Seasonal pattern
+    prov_label <- paste0("Province ", s)
+    idx_row <- seasonality_indices |>
+      dplyr::filter(
+        trimws(as.character(region)) == prov_label,
+        trimws(as.character(period)) == paste0("Period ", stan_data$P)
+      )
+    pattern <- if (nrow(idx_row) > 0) as.character(idx_row$clusters) else NA_character_
+
+    # Total deaths
+    total_deaths <- calendar |> dplyr::filter(s == !!s) |> dplyr::summarize(d = sum(death)) |> dplyr::pull(d)
+
+    # Has age data
+    has_age <- any(stan_data$has_age_data_ys[, s] == 1)
+
+    tibble::tibble(
+      s_idx = s, province = prov, health_region = hr, r_idx = r, zone = zone,
+      pi_coverage = round(pi_cov, 3),
+      se_median = round(se_med, 1), se_low = round(se_lo, 1), se_high = round(se_hi, 1),
+      foi_median = signif(foi_prov$q500, 3),
+      foi_low = signif(foi_prov$q025, 3),
+      foi_high = signif(foi_prov$q975, 3),
+      seasonal_pattern = pattern,
+      total_deaths = total_deaths,
+      has_age_data = has_age
+    )
+  })
+}
+
+################################################################################
+ppc_deaths_by_province <- function(s_idx) {
+  stopifnot(exists("fit"), exists("calendar"), exists("S"), exists("T"), exists("site_levels"))
+  if (!(s_idx %in% seq_len(S))) stop("s_idx out of range 1..S")
+
+  D_mat <- as.matrix(fit, pars = "D_ts")
+  phi_vec <- as.numeric(as.matrix(fit, pars = "phi_death"))
+
+  idx <- stringr::str_match(colnames(D_mat), "D_ts\\[(\\d+),(\\d+)\\]")
+  t_idx_col <- as.integer(idx[, 2])
+  s_idx_col <- as.integer(idx[, 3])
+
+  param_map <- tibble::tibble(par = colnames(D_mat), t_idx = t_idx_col, s = s_idx_col) |>
+    dplyr::filter(s == s_idx)
+
+  D_long <- tibble::as_tibble(D_mat[, param_map$par, drop = FALSE]) |>
+    dplyr::mutate(.draw = dplyr::row_number()) |>
+    tidyr::pivot_longer(cols = -.draw, names_to = "par", values_to = "D_expected") |>
+    dplyr::left_join(param_map, by = "par")
+
+  phi_df <- tibble::tibble(.draw = seq_len(nrow(D_mat)), phi = phi_vec)
+
+  pred_summ <- D_long |>
+    dplyr::left_join(phi_df, by = ".draw") |>
+    dplyr::group_by(t_idx) |>
+    dplyr::summarize(
+      yrep_q025 = stats::quantile(stats::rnbinom(n = dplyr::n(), size = phi, mu = D_expected), 0.025, names = FALSE),
+      yrep_q500 = stats::quantile(stats::rnbinom(n = dplyr::n(), size = phi, mu = D_expected), 0.50, names = FALSE),
+      yrep_q975 = stats::quantile(stats::rnbinom(n = dplyr::n(), size = phi, mu = D_expected), 0.975, names = FALSE),
+      .groups = "drop"
+    )
+
+  obs <- calendar |>
+    dplyr::filter(s == s_idx) |>
+    dplyr::select(t_idx, year, Month, observed_death = death)
+
+  obs |>
+    dplyr::left_join(pred_summ, by = "t_idx") |>
+    dplyr::arrange(year, Month) |>
+    dplyr::mutate(province = site_levels[s_idx],
+                  date = as.Date(sprintf("%d-%02d-01", year, Month)))
+}
+
+################################################################################
+extract_age_proportions <- function(s_idx, age_levels,
+                                     period_labels = c("2003-2007", "2008-2012",
+                                                       "2013-2018", "2019-2024")) {
+  stopifnot(exists("fit"), exists("stan_data"))
+  Y <- stan_data$Y; A <- stan_data$A; P <- stan_data$P
+
+  # Observed age-stratified cases [Y, A, S]
+  obs_yas <- stan_data$R_case_yas[, , s_idx]   # Y x A matrix
+  has_age <- stan_data$has_age_data_ys[, s_idx]  # Y-length vector
+
+  # Predicted proportions from rho_pa × N_tas (averaged over months within year)
+  rho_mat <- as.matrix(fit, pars = "rho_pa")
+  rho_median <- matrix(apply(rho_mat, 2, median), nrow = P, ncol = A, byrow = FALSE)
+
+  N_tas <- stan_data$N_tas  # [T, A, S]
+  period_id <- stan_data$period_id  # Y-length
+  Tmonths <- stan_data$T
+
+  # Map month index → year index (12 months per year)
+  month_to_year <- rep(seq_len(Y), each = 12)[seq_len(Tmonths)]
+
+  # Average population per year-age-site
+  pred_list <- list()
+  for (y in seq_len(Y)) {
+    p <- period_id[y]
+    t_months <- which(month_to_year == y)
+    # Mean pop across months in this year
+    N_as <- colMeans(matrix(N_tas[t_months, , s_idx], ncol = A))
+    expected_a <- rho_median[p, ] * N_as
+    total <- sum(expected_a)
+    pred_list[[y]] <- tibble::tibble(
+      y_idx = y, a_idx = seq_len(A),
+      pred_prop = if (total > 0) expected_a / total else rep(1 / A, A)
+    )
+  }
+  pred_df <- dplyr::bind_rows(pred_list)
+
+  # Observed proportions (aggregate by period)
+  obs_long <- tidyr::crossing(y_idx = seq_len(Y), a_idx = seq_len(A)) |>
+    dplyr::mutate(
+      obs_cases = purrr::map2_dbl(y_idx, a_idx, ~ obs_yas[.x, .y]),
+      has_data = has_age[y_idx],
+      p_idx = period_id[y_idx]
+    ) |>
+    dplyr::filter(has_data == 1)
+
+  combined <- obs_long |>
+    dplyr::left_join(pred_df, by = c("y_idx", "a_idx")) |>
+    dplyr::group_by(p_idx, a_idx) |>
+    dplyr::summarize(obs = sum(obs_cases), pred_prop = mean(pred_prop), .groups = "drop") |>
+    dplyr::group_by(p_idx) |>
+    dplyr::mutate(obs_prop = obs / sum(obs)) |>
+    dplyr::ungroup() |>
+    dplyr::mutate(
+      age_group = factor(age_levels[a_idx], levels = age_levels),
+      period = factor(period_labels[p_idx], levels = period_labels)
+    )
+
+  combined
+}
+
+################################################################################
+plot_province_diagnostic <- function(s_idx,
+                                      province_summary,
+                                      season_curves,
+                                      map_data,
+                                      config = list(
+                                        use_log = FALSE,
+                                        show_age = TRUE
+                                      ),
+                                      period_labels = c("2003-2007", "2008-2012",
+                                                        "2013-2018", "2019-2024"),
+                                      period_colors = c("#1b9e77", "#d95f02",
+                                                        "#7570b3", "#e7298a"),
+                                      base_size = 11,
+                                      fig_number = NULL,
+                                      output_dir = NULL) {
+
+  prov_info <- province_summary |> dplyr::filter(s_idx == !!s_idx)
+  province_name <- prov_info$province
+  province_entity <- paste0("Province ", s_idx, " ")
+
+  # ---------- common theme ----------
+  base_theme <- theme_minimal(base_size = base_size) +
+    theme(
+      axis.title = element_text(face = "bold"),
+      strip.text = element_text(face = "bold"),
+      plot.title = element_text(face = "bold", size = base_size)
+    )
+
+  # ===== Panel A: Cases PPC =====
+  ppc_data <- ppc_cases_by_province(s_idx)
+  period_boundaries <- as.Date(c("2007-12-15", "2012-12-15", "2018-12-15"))
+
+  p_ppc <- ggplot(ppc_data, aes(x = date)) +
+    geom_vline(xintercept = period_boundaries, linetype = "dashed", color = "grey60", linewidth = 0.3) +
+    geom_ribbon(aes(ymin = yrep_q025, ymax = yrep_q975), fill = "steelblue", alpha = 0.18) +
+    geom_line(aes(y = yrep_q500), color = "steelblue", linewidth = 0.7) +
+    geom_point(aes(y = observed_case), color = "black", size = 0.9, alpha = 0.6) +
+    scale_x_date(date_breaks = "5 years", date_labels = "%Y") +
+    labs(x = NULL, y = "Reported cases", title = "A. Posterior predictive check (cases)") +
+    base_theme
+
+  if (isTRUE(config$use_log)) {
+    p_ppc <- p_ppc + scale_y_log10(labels = scales::label_comma())
+  }
+
+  # ===== Panel B: Inset map =====
+  zone_val <- prov_info$zone
+  prov_fill <- "#e31a1c"
+
+  map_highlight <- map_data |>
+    dplyr::mutate(
+      fill_cat = dplyr::case_when(
+        Provinc == province_name ~ "Province",
+        Zone == zone_val ~ "Health Region",
+        TRUE ~ "Other"
+      ),
+      fill_cat = factor(fill_cat, levels = c("Province", "Health Region", "Other"))
+    )
+
+  p_map <- ggplot(map_highlight) +
+    geom_sf(aes(fill = fill_cat), color = "white", linewidth = 0.15) +
+    scale_fill_manual(values = c("Province" = prov_fill, "Health Region" = "#a6cee3", "Other" = "grey92"),
+                      name = NULL) +
+    coord_sf(xlim = c(96, 106), ylim = c(5, 21), expand = FALSE) +
+    theme_void(base_size = base_size) +
+    labs(title = paste0("B. ", prov_info$health_region)) +
+    theme(
+      legend.position = "none",
+      plot.title = element_text(face = "bold", hjust = 0.5, size = base_size)
+    )
+
+  # ===== Panel D: Seasonality =====
+  entity_label <- trimws(province_entity)
+  season_prov <- season_curves |>
+    dplyr::filter(trimws(as.character(entity)) == entity_label)
+
+  n_per <- length(unique(season_prov$period))
+  legend_labels <- setNames(period_labels[seq_len(n_per)], levels(season_prov$period)[seq_len(n_per)])
+  pal <- setNames(period_colors[seq_len(n_per)], levels(season_prov$period)[seq_len(n_per)])
+
+  # Look up seasonal pattern for each period
+  prov_label <- paste0("Province ", s_idx)
+  pattern_by_period <- seasonality_indices |>
+    dplyr::filter(trimws(as.character(region)) == prov_label) |>
+    dplyr::mutate(p_idx = as.integer(gsub("Period ", "", trimws(as.character(period))))) |>
+    dplyr::arrange(p_idx)
+
+  p_season <- ggplot(season_prov, aes(x = x)) +
+    geom_ribbon(aes(ymin = q025, ymax = q975, fill = period), alpha = 0.15) +
+    geom_line(aes(y = q500, color = period), linewidth = 0.7) +
+    geom_hline(yintercept = 1, linetype = "31", alpha = 0.6) +
+    scale_x_continuous(breaks = seq(1, 12, by = 2), labels = month.abb[seq(1, 12, by = 2)],
+                       minor_breaks = NULL) +
+    scale_y_continuous(limits = c(0, 4), breaks = seq(0, 4, 0.5)) +
+    scale_color_manual(values = pal, labels = legend_labels, name = NULL) +
+    scale_fill_manual(values = pal, labels = legend_labels, name = NULL) +
+    labs(x = NULL, y = "Seasonal multiplier", title = "D. Seasonality by period") +
+    base_theme +
+    theme(legend.position = "bottom",
+          legend.key.size = unit(0.4, "cm"),
+          legend.text = element_text(size = base_size - 2)) +
+    guides(color = guide_legend(nrow = 2), fill = guide_legend(nrow = 2))
+
+  # Annotate seasonal pattern as a single text block (top-left)
+  if (nrow(pattern_by_period) > 0) {
+    annot_lines <- paste0(
+      period_labels[pattern_by_period$p_idx], ": ",
+      as.character(pattern_by_period$clusters)
+    )
+    annot_text <- paste(annot_lines, collapse = "\n")
+    p_season <- p_season +
+      annotate("text", x = 1, y = 4, label = annot_text,
+               hjust = 0, vjust = 1, size = 2.8, fontface = "bold", color = "black")
+  }
+
+  # ===== Panel C: Age distribution (conditional) =====
+  show_age <- isTRUE(config$show_age) && prov_info$has_age_data
+  if (show_age) {
+    age_props <- extract_age_proportions(s_idx, age_levels, period_labels)
+    age_long <- age_props |>
+      tidyr::pivot_longer(cols = c(obs_prop, pred_prop), names_to = "source", values_to = "proportion") |>
+      dplyr::mutate(source = ifelse(source == "obs_prop", "Observed", "Predicted"))
+
+    p_age <- ggplot(age_long, aes(x = age_group, y = proportion, fill = source)) +
+      geom_col(position = "dodge", alpha = 0.8, width = 0.7) +
+      facet_wrap(~ period, nrow = 1) +
+      scale_fill_manual(values = c("Observed" = "#213448", "Predicted" = "#7fcdbb"), name = NULL) +
+      scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+      labs(x = NULL, y = "Proportion", title = "C. Age distribution: observed vs predicted") +
+      base_theme +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1, size = base_size - 3),
+            legend.position = "bottom",
+            legend.key.size = unit(0.35, "cm"))
+  }
+
+  # ===== Layout composition =====
+  row1 <- p_ppc | p_map
+  row1 <- row1 + plot_layout(widths = c(3, 1))
+
+  if (show_age) {
+    row2 <- p_age | p_season
+    row2 <- row2 + plot_layout(widths = c(3, 1))
+    final <- row1 / row2 + plot_layout(heights = c(1, 1))
+    fig_height <- 6
+  } else {
+    final <- row1 / p_season + plot_layout(heights = c(1, 1))
+    fig_height <- 6
+  }
+
+  final <- final +
+    plot_annotation(
+      title = province_name,
+      caption = "Data: Thailand MoPH Bureau of Epidemiology (2003\u20132024). Model: Bayesian latent process model (see Methods).",
+      theme = theme(
+        plot.title = element_text(face = "bold", size = base_size + 5, hjust = 0.5),
+        plot.caption = element_text(size = base_size - 3, hjust = 0.5, color = "grey50",
+                                    margin = margin(t = 8)),
+        plot.margin = margin(8, 8, 8, 8)
+      )
+    )
+
+  # ===== Save =====
+  if (!is.null(output_dir)) {
+    dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+    safe_name <- gsub("[^A-Za-z0-9]", "_", province_name)
+    fig_num <- if (is.null(fig_number)) s_idx else fig_number
+    outfile <- file.path(output_dir, sprintf("SuppFig_%02d_%s.pdf", fig_num, safe_name))
+    ggplot2::ggsave(outfile, final, width = 10, height = fig_height, units = "in", dpi = 300)
+  }
+
+  final
 }

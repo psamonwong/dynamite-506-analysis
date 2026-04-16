@@ -328,7 +328,8 @@ p_bivar <- make_bivar_map(
             map_data, 
             year0 = 2003, year1 = 2024, 
             legend_bbox = c(xmin = 101.0, xmax = 105.3, ymin = 7.5, ymax = 11.7),
-            pal = "BlueYl", 
+            pal = "DkViolet2",
+            flip_axes = TRUE, 
             subtitle = "")
 print(p_bivar)
 ```
@@ -586,6 +587,52 @@ for (i in seq_len(n_pages)) {
   dev.off()
 }
 
+```
+
+
+## Supplementary: Per-province composite figures
+
+```{r supplementary-province-plots}
+#| label: supplementary-province-plots
+
+if(export_plot){
+  supp_dir <- here("Plots", "Supplementary")
+  dir.create(supp_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  source(here("Scripts", "plot_functions.R"))
+  
+  # Build province summary table (once, used for all provinces)
+  prov_summ <- build_province_summary(
+    lambda_data, Se_summ, seasonality_indices,
+    map_data, calendar, stan_data
+  )
+  
+  # Sort provinces alphabetically for figure numbering
+  alpha_order <- order(site_levels)
+  
+  for (fig_i in seq_along(alpha_order)) {
+    s_idx <- alpha_order[fig_i]
+    prov_name <- site_levels[s_idx]
+    
+    tryCatch({
+      plot_province_diagnostic(
+        s_idx = s_idx,
+        province_summary = prov_summ,
+        season_curves = season_prov_smooth,
+        map_data = map_data,
+        config = list(
+          use_log = FALSE,
+          show_age = TRUE
+        ),
+        fig_number = fig_i,
+        output_dir = supp_dir
+      )
+      cat(sprintf("  Exported: %s (fig %d, s_idx %d)\n", prov_name, fig_i, s_idx))
+    }, error = function(e) {
+      cat(sprintf("  FAILED: %s (fig %d) — %s\n", prov_name, fig_i, e$message))
+    })
+  }
+}
 ```
 
 
