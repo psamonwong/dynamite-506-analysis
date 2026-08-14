@@ -88,6 +88,9 @@ age_levels <- c("0 to 5", "5 to 15", "15 to 25", "25 to 35",
 pop_age_levels = c("0 to 4", "5 to 14", "15 to 24", "25 to 34",
                     "35 to 44", "45 to 54", "55 to 64", "above 65")
 
+# Serology age group 
+sero_age <- 3
+
 config <- list(
   areas = area,
   start_year = start_year,
@@ -110,6 +113,7 @@ config <- list(
 data <- prepare_stan_data(config)
 
 stan_data <- data$stan_data
+stan_data$sero_age <- sero_age  # Add serology age group to stan_data
 calendar <- data$calendar
 site_levels <- data$site_levels
 region_levels <- data$region_levels
@@ -140,7 +144,7 @@ model_settings <- data.frame(
   seed = getOption("stan.seed", 124L)
 )
 
-model_file <-  "model9_CFR.stan"
+model_file <-  "model10.stan"
 
 save(model_settings, model_file, file = here("Rout", paste("model_settings_", dataset, ".RData", sep = "")))
 ```
