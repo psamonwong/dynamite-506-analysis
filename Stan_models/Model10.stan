@@ -54,7 +54,7 @@ data {
 
 parameters{
   // === DISPERSION (NegBinom k) ===
-  real<lower=4> phi_case;          // Case overdispersion
+  real<lower=0> phi_case;          // Case overdispersion
   real<lower=0> phi_death;         // Death overdispersion
   
   // === DETECTION SENSITIVITY (RW by region-year) ===
@@ -271,10 +271,10 @@ transformed parameters {
 
 model {
     // === PRIORS ===
-    phi_case ~ normal(5, 0.2);
-    phi_death ~ normal(3, 0.2);
+    phi_case ~ normal(5, 2);
+    phi_death ~ normal(3, 2);
 
-    mu_log_lambda_0 ~ normal(-10, 1);
+    mu_log_lambda_0 ~ normal(-10, 0.5);
     log_lambda_0_s ~ normal(mu_log_lambda_0, sigma_lambda_0);
     H0_s ~ exponential(1);
     

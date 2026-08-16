@@ -14,6 +14,7 @@ print(sprintf("Started at %s", Sys.time()))
 ##############################
 # LOAD PREPARED DATA
 dataset <- args[1]
+seed <- args[2]
 
 load(here("Rout", paste0("stan_data_", dataset, ".RData")))
 load(here("Rout", paste0("model_settings_", dataset, ".RData")))
@@ -36,7 +37,7 @@ fit <- rstan::sampling(
   cores = 4,
   chains = model_settings$chains, 
   thin = model_settings$thin, 
-  seed = 1234L, 
+  seed = seed, 
   refresh = max(1, model_settings$iter * 0.01), 
   control = list(adapt_delta = 0.95, max_treedepth = 12),
   init = function() init_fun(stan_data),

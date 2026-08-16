@@ -136,12 +136,14 @@ cat(sprintf("  Harmonics (H): %d\n", stan_data$H))
 ```
 
 ```{r model-settings}
+seed <- 12
+
 model_settings <- data.frame(
   iter = getOption("stan.iter", 2000),
   warmup = getOption("stan.warmup", 1000),
   chains = getOption("stan.chains", 4),
   thin = getOption("stan.thin", 4),
-  seed = getOption("stan.seed", 124L)
+  seed = getOption("stan.seed", seed)
 )
 
 model_file <-  "model10.stan"
@@ -154,7 +156,7 @@ Model Fitting
 ```{r model-fitting}
 RUN_MODEL <- F
 if(RUN_MODEL){
-    system(paste('Rscript --vanilla Scripts/run_models_local.R', dataset))
+    system(paste('Rscript --vanilla Scripts/run_models_local.R', dataset, seed))
 }
 ```
 
