@@ -160,6 +160,78 @@ if(RUN_MODEL){
 }
 ```
 
+## Sensitivity analysis: nu and omega
+
+Refit Model 10 with `nu` and `omega` each doubled and halved relative to their
+baseline values (one parameter varied at a time, baseline held fixed for the
+other). Everything else (data, `model_settings`, seed, `model_file`) matches
+the baseline `Full` run so the four fits are comparable.
+
+```{r sensitivity-config}
+#| label: sensitivity-config
+
+# One parameter varied at a time; baseline value used for the other
+sensitivity_scenarios <- list(
+  nu_x2      = list(nu = nu * 2),
+  nu_x0.5    = list(nu = nu * 0.5),
+  omega_x2   = list(omega = omega * 2),
+  omega_x0.5 = list(omega = omega * 0.5)
+)
+```
+
+```{r sensitivity-data-prep}
+#| label: sensitivity-data-prep
+
+# Prepares and saves stan_data_<scenario>.RData / model_settings_<scenario>.RData
+# for one sensitivity scenario, reusing the baseline `config`, sampler
+# settings, and model file. Local to this function -- does not touch the
+# baseline stan_data/calendar/... objects in the global environment.
+prepare_sensitivity_dataset <- function(scenario_name, param_overrides) {
+  scenario_config <- modifyList(config, param_overrides)
+  prepared <- prepare_stan_data(scenario_config)
+
+  stan_data <- prepared$stan_data
+  stan_data$sero_age <- sero_age
+  calendar <- prepared$calendar
+  site_levels <- prepared$site_levels
+  region_levels <- prepared$region_levels
+  age_levels <- prepared$age_levels
+
+  save(stan_data, calendar, site_levels, region_levels, age_levels,
+       file = here("Rout", paste0("stan_data_", scenario_name, ".RData")))
+
+  # Reuse baseline sampler settings and Stan model file
+  save(model_settings, model_file,
+       file = here("Rout", paste0("model_settings_", scenario_name, ".RData")))
+
+  message(sprintf("Prepared '%s': nu=%.4f, omega=%.4f",
+                   scenario_name, scenario_config$nu, scenario_config$omega))
+}
+
+PREP_SENSITIVITY <- F
+if (PREP_SENSITIVITY) {
+  walk2(names(sensitivity_scenarios), sensitivity_scenarios, prepare_sensitivity_dataset)
+}
+```
+
+```{r sensitivity-fitting}
+#| label: sensitivity-fitting
+
+# Fit one scenario at a time (blocking system() calls), reusing
+# run_models_local.R exactly as the baseline model does.
+RUN_SENSITIVITY <- F
+if (RUN_SENSITIVITY) {
+  for (scenario_name in names(sensitivity_scenarios)) {
+    message(sprintf("[%s] Fitting scenario: %s", Sys.time(), scenario_name))
+    system(paste('Rscript --vanilla Scripts/run_models_local.R', scenario_name, seed))
+  }
+}
+```
+
+Each fit is saved to `Rout/fit_<scenario_name>.RData` (e.g. `fit_nu_x2.RData`),
+so they can be loaded and compared with `dataset <- "nu_x2"` etc. using the
+same `load-fit`/diagnostic code as the baseline model.
+
 ## Model diagnostics
 
 ```{r load-fit}
