@@ -208,7 +208,7 @@ prepare_sensitivity_dataset <- function(scenario_name, param_overrides) {
                    scenario_name, scenario_config$nu, scenario_config$omega))
 }
 
-PREP_SENSITIVITY <- F
+PREP_SENSITIVITY <- T
 if (PREP_SENSITIVITY) {
   walk2(names(sensitivity_scenarios), sensitivity_scenarios, prepare_sensitivity_dataset)
 }
@@ -219,7 +219,7 @@ if (PREP_SENSITIVITY) {
 
 # Fit one scenario at a time (blocking system() calls), reusing
 # run_models_local.R exactly as the baseline model does.
-RUN_SENSITIVITY <- F
+RUN_SENSITIVITY <- T
 if (RUN_SENSITIVITY) {
   for (scenario_name in names(sensitivity_scenarios)) {
     message(sprintf("[%s] Fitting scenario: %s", Sys.time(), scenario_name))
