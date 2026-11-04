@@ -1,3 +1,52 @@
+# Figure export ##############################################################
+# Writes Plots/<name>.png and, for main figures, a PLOS-ready TIFF
+# (Plots/tiff/FigN.tif: LZW-compressed RGB, at most 7.5 in wide). The TIFF has
+# the same pixels and layout as the PNG; only the stored print width changes,
+# with resolution raised to match (300-600 dpi).
+export_figure <- function(plot, name, width, height, tiff = FALSE,
+                          dir = here("Plots"), print_width = 7.5) {
+  ragg::agg_png(file.path(dir, paste0(name, ".png")), width = width, height = height,
+                units = "in", res = 300, background = "white")
+  print(plot)
+  dev.off()
+  if (tiff) {
+    scale <- min(1, print_width / width)
+    dir.create(file.path(dir, "tiff"), showWarnings = FALSE)
+    ragg::agg_tiff(file.path(dir, "tiff", paste0(sub("_.*", "", name), ".tif")),
+                   width = width * scale, height = height * scale, units = "in",
+                   res = 300 / scale, scaling = scale, compression = "lzw", background = "white")
+    print(plot)
+    dev.off()
+  }
+  invisible(file.path(dir, paste0(name, ".png")))
+}
+
+# Figure S1: posterior draws of province FOI against regional reporting proportion
+plot_posterior_correlation <- function(fit, stan_data, region, n_draws = 200,
+                                       base_size = 9, seed = 42) {
+  post <- rstan::extract(fit, pars = c("Se_y", "lambda_base_ys"))
+  set.seed(seed)
+  draws <- sample(dim(post$Se_y)[1], min(n_draws, dim(post$Se_y)[1]))
+  provinces <- which(stan_data$region_id == region)
+  years <- seq_len(dim(post$lambda_base_ys)[2])
+  plot_data <- expand_grid(year_idx = years, province = provinces) |>
+    mutate(d = map2(year_idx, province, \(y, p) tibble(
+      draw = seq_along(draws),
+      Se_y = post$Se_y[draws, region, y],
+      lambda_base_ys = post$lambda_base_ys[draws, y, p]))) |>
+    unnest(d) |>
+    mutate(year = year_idx + 2002, province = factor(province))
+
+  ggplot(plot_data, aes(x = log10(lambda_base_ys), y = Se_y, color = province)) +
+    geom_point(alpha = 0.4, size = 0.6) +
+    facet_wrap(~ year, scales = "free_y") +
+    labs(title = paste("Health Region", region),
+         subtitle = "Posterior draws by year; colours denote provinces in this region",
+         x = "Province log10 baseline FOI", y = "Region reporting proportions") +
+    theme_bw(base_size = base_size) +
+    theme(legend.position = "none")
+}
+
 # Function to export traceplots for key parameters
 export_traceplots <- function(dataset) {
   # Create output directory
@@ -83,12 +132,13 @@ plot_health_regions <- function(map_data,
     geom_sf(data = map_data, aes(fill = Zone), colour = "white", linewidth = 0.2) +
     annotation_scale(location = "bl",
                      width_hint = 0.2,
+                     text_cex = 0.7 * base_size / 10,
                      bar_cols = c("black", "white")) +
     annotation_north_arrow(location = "bl",
                            which_north = "true",
-                           pad_y = unit(0.3, "in"),
-                           height = unit(0.8, "cm"),
-                           width = unit(0.8, "cm"),
+                           pad_y = unit(0.3 * base_size / 14, "in"),
+                           height = unit(0.8 * base_size / 14, "cm"),
+                           width = unit(0.8 * base_size / 14, "cm"),
                            style = north_arrow_fancy_orienteering) +
     coord_sf(xlim = c(96, 106), ylim = c(5, 21), expand = FALSE) +
     scale_fill_manual(values = colors_pallete, guide = "none") +  
@@ -104,10 +154,10 @@ plot_health_regions <- function(map_data,
     p <- p +
       geom_text(data = zone_centroids, 
                 aes(x = lon, y = lat, label = zone_number),
-                size = 7, fontface = "bold", color = "white", vjust = 0.5) +
+                size = base_size * 0.5, fontface = "bold", color = "white", vjust = 0.5) +
       geom_text(data = zone_centroids, 
                 aes(x = lon, y = lat, label = zone_number),
-                size = 6.5, fontface = "bold", color = "black", vjust = 0.5)
+                size = base_size * 0.46, fontface = "bold", color = "black", vjust = 0.5)
   }
   
   return(p)
@@ -173,7 +223,7 @@ summarise_age_standardised_rates <- function(case_age_data, population_data) {
     )
 }
 
-plot_rate_map <- function(rates, map_data, value, name, colours, breaks) {
+plot_rate_map <- function(rates, map_data, value, name, colours, breaks, base_size = 14) {
   map_joined <- map_data |>
     left_join(rates, by = c("Provinc" = "Area"))
 
@@ -188,35 +238,37 @@ plot_rate_map <- function(rates, map_data, value, name, colours, breaks) {
       name = name
     ) +
     coord_sf(xlim = c(96, 106), ylim = c(5, 21), expand = FALSE) +
-    theme_void(base_size = 14) +
+    theme_void(base_size = base_size) +
     theme(
       legend.position = c(0.80, 0.25),
-      legend.title = element_text(size = 11, lineheight = 0.95),
-      legend.text = element_text(size = 10),
-      legend.key.height = unit(0.55, "cm"),
-      legend.key.width = unit(0.35, "cm"),
+      legend.title = element_text(size = base_size * 0.8, lineheight = 0.95),
+      legend.text = element_text(size = base_size * 0.8),
+      legend.key.height = unit(0.55 * base_size / 14, "cm"),
+      legend.key.width = unit(0.35 * base_size / 14, "cm"),
       legend.spacing.y = unit(0.1, "cm"),
       plot.margin = margin(1, 1, 1, 1, unit = "pt")
     )
 }
 
-plot_area_cases_map <- function(case_data, population_data, map_data) {
+plot_area_cases_map <- function(case_data, population_data, map_data, base_size = 14) {
   plot_rate_map(
     summarise_reported_rates(case_data, population_data), map_data,
     value = "incidence_100k",
     name = "Average annual reported\nincidence per 100,000\n(2003-2024)",
     colours = c('#DEDED1','#94B4C1','#547792','#213448'),
-    breaks = c(1, 10, 50, 100, 200)
+    breaks = c(1, 10, 50, 100, 200),
+    base_size = base_size
   )
 }
 
-plot_area_deaths_map <- function(case_data, population_data, map_data) {
+plot_area_deaths_map <- function(case_data, population_data, map_data, base_size = 14) {
   plot_rate_map(
     summarise_reported_rates(case_data, population_data), map_data,
     value = "mortality_1m",
     name = "Average annual reported\ndeaths per 1,000,000\n(2003-2024)",
     colours = c('#DEDED1','#B6AE9F','#D34E4E','#BF1A1A'),
-    breaks = c(0, 0.1, 0.5, 1, 1.5)
+    breaks = c(0, 0.1, 0.5, 1, 1.5),
+    base_size = base_size
   )
 }
 ##################################################################################
@@ -252,7 +304,7 @@ plot_death_bar <- function(case_data, base_size = 14) {
     ggtitle("Annual reported deaths")
 }
 ##################################################################################
-plot_agegroup_proportion <- function(case_age_data) {
+plot_agegroup_proportion <- function(case_age_data, base_size = 14) {
   age_levels <- c("0 to 5",  "5 to 15", "15 to 25", "25 to 35", "35 to 45", "45 to 55", "55 to 65", "above 65", "unknown")
   age_summary <- case_age_data %>%
     group_by(age_group_new) %>%
@@ -269,11 +321,13 @@ plot_agegroup_proportion <- function(case_age_data) {
   ggplot(age_summary, aes(x = age_group_new, y = proportion, fill = type)) +
     geom_col(position = "dodge", alpha = 0.8) +
     scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-    labs(x = "", y = "", fill = "", title = "Age distribution of\nreported cases and deaths") +
+    labs(x = "", y = "", fill = "", title = "Reported cases and\ndeaths by age group") +
     scale_fill_manual(values = c("cases" = "#213448", "deaths" = "#BF1A1A")) +
-    theme_bw(base_size = 14) +
+    theme_bw(base_size = base_size) +
     coord_flip() +
-    theme(legend.position = c(0.85, 0.3))
+    theme(legend.position = "bottom",
+          legend.key.size = unit(base_size * 0.03, "cm"),
+          legend.margin = margin(0, 0, 0, 0))
 }
 
 
@@ -350,7 +404,8 @@ plot_foi_trends_inc_groups <- function(lambda_data,
                                        inc_breaks = c(-Inf, 100, 1000, Inf),
                                        inc_labels = c("< 100", "100-1000", "> 1000"),
                                        highlight_combos = c("100-1000-> 1000", "> 1000-> 1000", "> 1000-> 100-1000"),
-                                       grey_combo = "Other") {
+                                       grey_combo = "Other",
+                                       base_size = 16) {
   stopifnot(length(inc_breaks) == length(inc_labels) + 1)
 
   # Province abbreviation lookup
@@ -460,7 +515,7 @@ class_tbl <- lambda_inc |>
 
   pal_cols <- setNames(core_cols[seq_along(group_labels)], group_labels)
 
-  line_size <- ifelse(plot_df$inc_group_combo_plot %in% highlight_combos, 1, 0.3)
+  line_size <- ifelse(plot_df$inc_group_combo_plot %in% highlight_combos, 1, 0.3) * base_size / 16
   line_alpha <- ifelse(plot_df$inc_group_combo_plot %in% highlight_combos, 0.85, 0.85)
 
   ggplot(plot_df, aes(year, foi_ann, group = province)) +
@@ -471,7 +526,7 @@ class_tbl <- lambda_inc |>
     geom_line(
       data = dplyr::filter(plot_df, inc_group_combo_plot != grey_combo),
       aes(colour = inc_group_combo_plot),
-      linewidth = 1.2,
+      linewidth = 1.2 * base_size / 16,
       alpha = 1
     ) +
     ggrepel::geom_text_repel(
@@ -485,16 +540,21 @@ class_tbl <- lambda_inc |>
       direction = "y",
       hjust = 0,
       nudge_x = 1,
-      size =4,
+      size = base_size * 0.29,
       fontface = "bold",
       segment.size = 0.3,
       segment.color = "grey50",
       segment.linetype = "dotted",
       min.segment.length = 0,
       max.overlaps = Inf,
+      xlim = c(end_year + 1, NA),
+      box.padding = 0.1,
+      force = 2,
+      max.iter = 1e5,
+      seed = 42,
       show.legend = FALSE
     ) +
-    facet_wrap(~ region) +
+    facet_wrap(~ region, labeller = label_wrap_gen(18)) +
     scale_y_log10(
       name = "Estimated annual force of infection\n(per at-risk person-year)",
       labels = scales::label_scientific(digits = 1),
@@ -508,16 +568,16 @@ class_tbl <- lambda_inc |>
     scale_fill_manual(values = pal_cols, name = NULL) +
     coord_cartesian(clip = "off") +
     scale_x_continuous(
-      expand = expansion(mult = c(0.02, 0.2)),
+      expand = expansion(mult = c(0.02, 0.4)),
       breaks = seq(min(plot_df$year, na.rm = TRUE), max(plot_df$year, na.rm = TRUE), 5)
     ) +
-    theme_bw(base_size = 16) +
+    theme_bw(base_size = base_size) +
     theme(
       panel.grid.major = element_line(linewidth = 0.4),
       panel.grid.minor = element_blank(),
       legend.position = "none",
-      panel.spacing = unit(0.5, "lines"),
-      plot.margin = margin(5.5, 50, 5.5, 5.5),
+      panel.spacing = unit(0.9, "lines"),
+      plot.margin = margin(5.5, 50 * base_size / 16, 5.5, 5.5),
       axis.text.x = element_text(angle = 45, hjust = 1),
       axis.title.x = element_blank()
     ) +
@@ -535,7 +595,8 @@ make_bivar_map <- function(lambda_data,
                                               pal = "DkViolet",
                                               flip_axes = FALSE,
                                               subtitle = "Bivariate choropleth: 2003 vs 2024 (median FOI)",
-                                              legend_bbox = c(xmin = 101.0, xmax = 104.3, ymin = 8.0, ymax = 11.2)) {
+                                              legend_bbox = c(xmin = 101.0, xmax = 104.3, ymin = 8.0, ymax = 11.2),
+                                              base_size = 14) {
   stopifnot(length(foi_breaks) == length(foi_labels) + 1)
 
   foi_wide <- lambda_data |>
@@ -571,7 +632,7 @@ make_bivar_map <- function(lambda_data,
     geom_sf(aes(fill = bi_class), color = "white", linewidth = 0.3, show.legend = FALSE) +
     biscale::bi_scale_fill(pal = pal, dim = length(foi_labels), na.value = "grey90") +
     coord_sf(xlim = c(96, 106), ylim = c(5, 21), expand = FALSE) +
-    theme_void(base_size = 14) +
+    theme_void(base_size = base_size) +
     labs(title = subtitle) +
     theme(
       plot.title = element_blank(),
@@ -593,9 +654,9 @@ legend_plot <- biscale::bi_legend(
                        labels = foi_labels,
                        expand = c(0, 0)) +
     theme(
-      axis.text.x  = element_text(size = 11, angle = 45, hjust = 1),
-      axis.text.y  = element_text(size = 11),
-      axis.title = element_text(size = 13),
+      axis.text.x  = element_text(size = base_size * 0.8, angle = 45, hjust = 1),
+      axis.text.y  = element_text(size = base_size * 0.8),
+      axis.title = element_text(size = base_size * 0.93),
       plot.margin = margin(0, 0, 0, 0)
     )
 
@@ -815,7 +876,7 @@ cluster_validity_metrics <- function(indices, k_range = 1:8, nstart = 25,
   })
 }
 
-plot_cluster_validity <- function(metrics, k_selected = 3) {
+plot_cluster_validity <- function(metrics, k_selected = 3, base_size = 14) {
   metric_labels <- c(
     wss = "A. Elbow: within-cluster SS",
     silhouette = "B. Average silhouette width",
@@ -838,7 +899,7 @@ plot_cluster_validity <- function(metrics, k_selected = 3) {
     facet_wrap(~ metric, scales = "free_y", ncol = 3) +
     scale_x_continuous(breaks = unique(metrics$k), minor_breaks = NULL) +
     labs(x = "Number of clusters (K)", y = NULL) +
-    theme_bw(base_size = 14)
+    theme_bw(base_size = base_size)
 }
 
 # Agreement (ARI) of the K-cluster partition with alternative feature encodings
@@ -1068,8 +1129,8 @@ plot_Se_over_time <- function(Se_summ, map_data) {
 }
 
 ################################################################################
-summarise_relative_susceptibility <- function(fit, age_levels) {
-  rho_mat <- as.matrix(fit, pars = "rho_pa")
+summarise_relative_susceptibility <- function(fit, age_levels, draws = NULL) {
+  rho_mat <- if (is.null(draws)) as.matrix(fit, pars = "rho_pa") else draws
   idx <- stringr::str_match(colnames(rho_mat), "rho_pa\\[(\\d+),(\\d+)\\]")
   tibble(par = colnames(rho_mat), p_idx = as.integer(idx[, 2]), a_idx = as.integer(idx[, 3])) |>
     left_join(
@@ -1114,8 +1175,8 @@ plot_relative_susceptibility <- function(rho_summ, age_levels, ref_age = "25 to 
 }
 ################################################################################
 
-summarise_cfr <- function(fit, age_levels, ref_age = "25 to 35") {
-  CFR_mat <- as.matrix(fit, pars = "CFR_pa")
+summarise_cfr <- function(fit, age_levels, ref_age = "25 to 35", draws = NULL) {
+  CFR_mat <- if (is.null(draws)) as.matrix(fit, pars = "CFR_pa") else draws
   idx <- stringr::str_match(colnames(CFR_mat), "CFR_pa\\[(\\d+),(\\d+)\\]")
   ref_age_idx <- which(age_levels == ref_age)
   tibble(par = colnames(CFR_mat), p_idx = as.integer(idx[, 2]), a_idx = as.integer(idx[, 3])) |>
@@ -1282,47 +1343,6 @@ build_province_summary <- function(lambda_data, Se_summ, seasonality_indices,
 }
 
 ################################################################################
-ppc_deaths_by_province <- function(s_idx) {
-  stopifnot(exists("fit"), exists("calendar"), exists("S"), exists("T"), exists("site_levels"))
-  if (!(s_idx %in% seq_len(S))) stop("s_idx out of range 1..S")
-
-  D_mat <- as.matrix(fit, pars = "D_ts")
-  phi_vec <- as.numeric(as.matrix(fit, pars = "phi_death"))
-
-  idx <- stringr::str_match(colnames(D_mat), "D_ts\\[(\\d+),(\\d+)\\]")
-  t_idx_col <- as.integer(idx[, 2])
-  s_idx_col <- as.integer(idx[, 3])
-
-  param_map <- tibble::tibble(par = colnames(D_mat), t_idx = t_idx_col, s = s_idx_col) |>
-    dplyr::filter(s == s_idx)
-
-  D_long <- tibble::as_tibble(D_mat[, param_map$par, drop = FALSE]) |>
-    dplyr::mutate(.draw = dplyr::row_number()) |>
-    tidyr::pivot_longer(cols = -.draw, names_to = "par", values_to = "D_expected") |>
-    dplyr::left_join(param_map, by = "par")
-
-  phi_df <- tibble::tibble(.draw = seq_len(nrow(D_mat)), phi = phi_vec)
-
-  pred_summ <- D_long |>
-    dplyr::left_join(phi_df, by = ".draw") |>
-    dplyr::group_by(t_idx) |>
-    dplyr::summarize(
-      yrep_q025 = stats::quantile(stats::rnbinom(n = dplyr::n(), size = phi, mu = D_expected), 0.025, names = FALSE),
-      yrep_q500 = stats::quantile(stats::rnbinom(n = dplyr::n(), size = phi, mu = D_expected), 0.50, names = FALSE),
-      yrep_q975 = stats::quantile(stats::rnbinom(n = dplyr::n(), size = phi, mu = D_expected), 0.975, names = FALSE),
-      .groups = "drop"
-    )
-
-  obs <- calendar |>
-    dplyr::filter(s == s_idx) |>
-    dplyr::select(t_idx, year, Month, observed_death = death)
-
-  obs |>
-    dplyr::left_join(pred_summ, by = "t_idx") |>
-    dplyr::arrange(year, Month) |>
-    dplyr::mutate(province = site_levels[s_idx],
-                  date = as.Date(sprintf("%d-%02d-01", year, Month)))
-}
 
 ################################################################################
 extract_age_proportions <- function(s_idx, age_levels,
@@ -1558,4 +1578,187 @@ plot_province_diagnostic <- function(s_idx,
   }
 
   final
+}
+###############################################################################
+# Sensitivity analysis for the fixed clinical fraction (nu) and IgG waning
+# rate (omega): summaries of each refitted model and comparison figures
+
+# Largest subset of chains that mix (rank-normalised R-hat < threshold for all
+# key parameters); ties broken by the lowest maximum R-hat. If no two chains
+# mix, the best-agreeing pair is returned with converged = FALSE.
+select_converged_chains <- function(fit, pars, threshold = 1.1) {
+  arr <- as.array(fit, pars = pars)                       # iterations x chains x parameters
+  arr <- arr[, , apply(arr, 3, \(m) sd(m) > 0), drop = FALSE]   # drop fixed reference values
+  max_rhat <- function(ch) max(apply(arr[, ch, , drop = FALSE], 3, rstan::Rhat))
+  n_chains <- dim(arr)[2]
+  all_rhat <- max_rhat(seq_len(n_chains))
+  for (k in n_chains:2) {
+    combos <- combn(n_chains, k, simplify = FALSE)
+    rhat <- map_dbl(combos, max_rhat)
+    if (min(rhat) < threshold) {
+      return(list(chains = combos[[which.min(rhat)]], max_rhat_retained = min(rhat),
+                  max_rhat_all = all_rhat, n_chains = n_chains, converged = TRUE))
+    }
+    if (k == 2) {
+      return(list(chains = combos[[which.min(rhat)]], max_rhat_retained = min(rhat),
+                  max_rhat_all = all_rhat, n_chains = n_chains, converged = FALSE))
+    }
+  }
+}
+
+# Draws x parameters matrix for the selected chains
+draws_matrix <- function(fit, par, chains) {
+  arr <- as.array(fit, pars = par)[, chains, , drop = FALSE]
+  matrix(arr, ncol = dim(arr)[3], dimnames = list(NULL, dimnames(arr)[[3]]))
+}
+
+# Posterior summaries from one saved fit (Rout/fit_<scenario>.RData), loaded
+# into a local environment so the baseline objects in the session are untouched.
+# Only chains that mix with each other are used (see select_converged_chains).
+summarise_sensitivity_fit <- function(scenario, probs = c(0.025, 0.5, 0.975)) {
+  env <- new.env()
+  load(here("Rout", paste0("fit_", scenario, ".RData")), envir = env)
+  fit <- env$fit
+  years <- sort(unique(env$calendar$year))
+  q <- function(x) quantile(x, probs, names = FALSE)
+
+  key_pars <- c("phi_case", "phi_death", "mu_log_lambda_0", "sigma_Se", "sigma_rho",
+                "mu_logit_CFR", "sigma_CFR", "Se_y", "rho_pa", "CFR_pa", "lambda_base_ys")
+  sel <- select_converged_chains(fit, key_pars)
+
+  lambda <- draws_matrix(fit, "lambda_base_ys", sel$chains)
+  idx <- stringr::str_match(colnames(lambda), "\\[(\\d+),(\\d+)\\]")
+  foi <- tibble(y_idx = as.integer(idx[, 2]), s_idx = as.integer(idx[, 3]),
+                qs = map(seq_len(ncol(lambda)), \(j) 12 * q(lambda[, j]))) |>
+    mutate(year = years[y_idx], province = env$site_levels[s_idx],
+           health_region = paste0("Health Region ", env$stan_data$region_id[s_idx])) |>
+    unnest_wider(qs, names_sep = "_") |>
+    rename(lower = qs_1, median = qs_2, upper = qs_3)
+
+  se <- draws_matrix(fit, "Se_y", sel$chains)
+  idx <- stringr::str_match(colnames(se), "\\[(\\d+),(\\d+)\\]")
+  reporting <- tibble(r_idx = as.integer(idx[, 2]), y_idx = as.integer(idx[, 3]),
+                      qs = map(seq_len(ncol(se)), \(j) q(se[, j]))) |>
+    mutate(year = years[y_idx], health_region = paste0("Health Region ", r_idx)) |>
+    unnest_wider(qs, names_sep = "_") |>
+    rename(lower = qs_1, median = qs_2, upper = qs_3)
+
+  rho <- summarise_relative_susceptibility(fit, env$age_levels, draws = draws_matrix(fit, "rho_pa", sel$chains))
+  cfr <- summarise_cfr(fit, env$age_levels, draws = draws_matrix(fit, "CFR_pa", sel$chains))
+
+  list(
+    scenario = scenario, foi = foi, reporting = reporting, rho = rho, cfr = cfr,
+    chains_used = sel$chains, n_chains = sel$n_chains, converged = sel$converged,
+    max_rhat_all = sel$max_rhat_all, max_rhat = sel$max_rhat_retained
+  )
+}
+
+sensitivity_labels <- c(
+  "Full" = "Baseline (clinical fraction 0.15, waning rate 0.54/yr)",
+  "nu_x0.5" = "Clinical fraction 0.075", "nu_x2" = "Clinical fraction 0.30",
+  "omega_x0.5" = "Waning rate 0.27/yr", "omega_x2" = "Waning rate 1.08/yr"
+)
+sensitivity_colours <- c("black", "#3E8359", "#7FC097", "#B5523B", "#E9A07F")
+
+# Scenario labels, marking fits whose MCMC did not converge (max R-hat >= 1.1)
+sensitivity_label_map <- function(sens) {
+  map_chr(sens, \(s) paste0(sensitivity_labels[[s$scenario]],
+                            if (length(s$chains_used) < s$n_chains)
+                              sprintf(" (%d of %d chains%s)", length(s$chains_used), s$n_chains,
+                                      if (s$converged) "" else ", not converged") else ""))
+}
+
+# Province-level FOI (mean over years of the posterior median annual FOI):
+# each scenario against the baseline, with Spearman rank correlations
+plot_sensitivity_foi <- function(sens, base_size = 10) {
+  labels <- sensitivity_label_map(sens)
+  prov <- map_dfr(sens, \(s) s$foi |> group_by(province) |>
+                    summarise(foi = mean(median), .groups = "drop") |>
+                    mutate(scenario = s$scenario))
+  base <- prov |> filter(scenario == "Full") |> select(province, baseline = foi)
+  plot_data <- prov |> filter(scenario != "Full") |> left_join(base, by = "province") |>
+    mutate(scenario = factor(labels[scenario], levels = labels[-1]))
+  stats <- plot_data |> group_by(scenario) |>
+    summarise(rho_s = cor(foi, baseline, method = "spearman"),
+              ratio = exp(mean(log(foi / baseline))), .groups = "drop") |>
+    mutate(label = sprintf("Spearman %.2f\nFOI ratio %.2f", rho_s, ratio))
+
+  ggplot(plot_data, aes(baseline, foi)) +
+    geom_abline(linetype = "31", colour = "grey50") +
+    geom_point(alpha = 0.7, size = 1.8, colour = "#213448") +
+    geom_text(data = stats, aes(label = label), x = -Inf, y = Inf,
+              hjust = -0.1, vjust = 1.3, size = base_size * 0.3, inherit.aes = FALSE) +
+    scale_x_log10(labels = scales::label_scientific(digits = 1)) +
+    scale_y_log10(labels = scales::label_scientific(digits = 1)) +
+    facet_wrap(~ scenario, ncol = 2, labeller = label_wrap_gen(30)) +
+    labs(x = "Mean annual FOI, baseline (per at-risk person-year)",
+         y = "Mean annual FOI, sensitivity scenario") +
+    theme_bw(base_size = base_size)
+}
+
+plot_sensitivity_reporting <- function(sens, base_size = 10) {
+  labels <- sensitivity_label_map(sens)
+  converged <- map_lgl(sens, \(s) length(s$chains_used) == s$n_chains)
+  plot_data <- map_dfr(sens, \(s) s$reporting |> mutate(scenario = s$scenario)) |>
+    mutate(scenario = factor(labels[scenario], levels = labels),
+           health_region = factor(health_region, levels = paste0("Health Region ", 1:13)))
+  ggplot(plot_data, aes(year, median, colour = scenario, linetype = scenario)) +
+    geom_line(linewidth = 0.7) +
+    facet_wrap(~ health_region, ncol = 4) +
+    scale_colour_manual(values = sensitivity_colours, name = NULL) +
+    scale_linetype_manual(values = setNames(ifelse(converged, "solid", "22"), labels), name = NULL) +
+    scale_y_continuous(limits = c(0, 1)) +
+    labs(x = NULL, y = "Reporting proportion (posterior median)") +
+    guides(colour = guide_legend(ncol = 2), linetype = guide_legend(ncol = 2)) +
+    theme_bw(base_size = base_size) +
+    theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+plot_sensitivity_age <- function(sens, age_levels, base_size = 10) {
+  labels <- sensitivity_label_map(sens)
+  period_labels <- c("Period 1" = "2003-2007", "Period 2" = "2008-2012",
+                     "Period 3" = "2013-2018", "Period 4" = "2019-2024")
+  rho <- map_dfr(sens, \(s) s$rho |> mutate(scenario = s$scenario, quantity = "Relative susceptibility"))
+  cfr <- map_dfr(sens, \(s) s$cfr |> transmute(p_idx, a_idx, period, age_group = as.character(age_group),
+                                               mean = mean_rel_CFR, q025 = q025_ref_CFR, q975 = q975_rel_CFR,
+                                               scenario = s$scenario, quantity = "Relative case-fatality rate"))
+  bind_rows(rho, cfr) |>
+    mutate(scenario = factor(labels[scenario], levels = labels),
+           age_group = factor(age_group, levels = age_levels),
+           period = factor(period_labels[period], levels = period_labels),
+           quantity = factor(quantity, levels = c("Relative susceptibility", "Relative case-fatality rate"))) |>
+    ggplot(aes(age_group, mean, colour = scenario)) +
+    geom_hline(yintercept = 1, linetype = "31", colour = "grey50") +
+    geom_pointrange(aes(ymin = q025, ymax = q975), position = position_dodge(width = 0.75), size = 0.1, linewidth = 0.4) +
+    facet_grid(quantity ~ period, scales = "free_y") +
+    scale_colour_manual(values = sensitivity_colours, name = NULL) +
+    labs(x = NULL, y = "Relative to 25 to 35 years (mean, 95% CrI)") +
+    guides(colour = guide_legend(ncol = 2)) +
+    theme_bw(base_size = base_size) +
+    theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+# One row per scenario: convergence and the key quantities relative to baseline
+sensitivity_summary_table <- function(sens) {
+  prov_foi <- \(s) s$foi |> group_by(province) |> summarise(foi = mean(median), .groups = "drop")
+  base_foi <- prov_foi(sens[["Full"]]) |> rename(baseline = foi)
+  base_rep <- sens[["Full"]]$reporting |> select(health_region, year, baseline = median)
+  map_dfr(sens, function(s) {
+    foi <- prov_foi(s) |> left_join(base_foi, by = "province")
+    rep <- s$reporting |> left_join(base_rep, by = c("health_region", "year"))
+    rho65 <- s$rho |> filter(age_group == "above 65")
+    tibble(
+      scenario = sensitivity_labels[[s$scenario]],
+      chains_used = sprintf("%d/%d", length(s$chains_used), s$n_chains),
+      max_rhat_all_chains = s$max_rhat_all,
+      max_rhat_used_chains = s$max_rhat,
+      converged = s$converged,
+      foi_ratio = exp(mean(log(foi$foi / foi$baseline))),
+      foi_spearman = cor(foi$foi, foi$baseline, method = "spearman"),
+      reporting_ratio = exp(mean(log(rep$median / rep$baseline))),
+      rho65_2003_2007 = rho65$mean[rho65$period == "Period 1"],
+      rho65_2019_2024 = rho65$mean[rho65$period == "Period 4"],
+      cfr_ref_2003_2007_pct = 100 * s$cfr$mean[s$cfr$p_idx == 1 & s$cfr$age_group == "25 to 35"]
+    )
+  })
 }

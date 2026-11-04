@@ -18,6 +18,11 @@ execute:
   message: false
 ---
 
+Analysis workflow for the manuscript. Sections follow the manuscript figures
+(Fig 1-5, Figures S1-S5); all figures are written to `Plots/` (PNG) and
+`Plots/tiff/` (PLOS submission TIFFs), and the data behind them to
+`Source_data/`. Model fits are read from `Rout/` (not tracked in git).
+
 ```{r setup}
 # | label: setup
 # | include: false
@@ -208,7 +213,7 @@ prepare_sensitivity_dataset <- function(scenario_name, param_overrides) {
                    scenario_name, scenario_config$nu, scenario_config$omega))
 }
 
-PREP_SENSITIVITY <- T
+PREP_SENSITIVITY <- F
 if (PREP_SENSITIVITY) {
   walk2(names(sensitivity_scenarios), sensitivity_scenarios, prepare_sensitivity_dataset)
 }
@@ -247,70 +252,91 @@ if(export_plot){
   }
 ```
 
-## Figure 1: Study overview
+### Figure S1: posterior correlation between FOI and reporting proportion
+
+One figure per health region in `Plots/Posterior_correlation/`; Health Region 1
+is Figure S1 in the supplement.
+
+```{r posterior-correlation}
+#| label: posterior-correlation
+if(export_plot){
+  dir.create(here("Plots", "Posterior_correlation"), showWarnings = FALSE)
+  for (r in seq_len(stan_data$R)) {
+    g_corr <- plot_posterior_correlation(fit, stan_data, region = r)
+    export_figure(g_corr, file.path("Posterior_correlation", paste0("correlation_region_", r)),
+                  width = 7.5, height = 7.5)
+    if (r == 1) export_figure(g_corr, "FigureS1_posterior_correlation", width = 7.5, height = 7.5)
+  }
+}
+```
+
+## Fig 1: Study overview
+
+Fig 1 is exported at 7.5 in wide (the PLOS maximum), so `fig_base` is the
+printed font size in points (axis labels print at 0.8 x fig_base). Figs 2-5 are
+drawn larger (10-12 in, base 14) and scaled to 7.5 in in the TIFF files.
 
 ### 1.1 Heath region map
 
 ```{r fig1-health region map}
 #| label: fig1-health-region-map
-g_health_region_map <- plot_health_regions(map_data, base_size = 14, title = "")
+fig_base <- 10
+g_health_region_map <- plot_health_regions(map_data, base_size = fig_base, title = "")
 print(g_health_region_map)
 ```
 
 ### 1.2 Reported cases over time
 ```{r fig1-reported-data}
 #| label: fig1-reported-data
-g_reported_case <- plot_case_bar(case_data, base_size = 14)
+g_reported_case <- plot_case_bar(case_data, base_size = fig_base)
 print(g_reported_case)
 ```
 
 ### 1.3 Reported deaths over time
 ```{r fig1-reported-death}
 #| label: fig1-reported-death
-g_reported_death <- plot_death_bar(case_data, base_size = 14)
+g_reported_death <- plot_death_bar(case_data, base_size = fig_base)
 print(g_reported_death)
 ```
 
 ### 1.4 Maps of reported incidence by province
 ```{r fig1-map}
 #| label: fig1-map
-g_area_cases_map <- plot_area_cases_map(case_data, population_data, map_data)
+g_area_cases_map <- plot_area_cases_map(case_data, population_data, map_data, base_size = fig_base)
 print(g_area_cases_map)
 ```
 
 ### 1.5 Maps of reported mortality by province
 ```{r fig1-map2}
 #| label: fig1-map2
-g_area_death_map <- plot_area_deaths_map(case_data, population_data, map_data)
+g_area_death_map <- plot_area_deaths_map(case_data, population_data, map_data, base_size = fig_base)
 print(g_area_death_map)
 ```
 
 ### 1.6 Age distribution of cases and deaths
 ```{r fig1-age-distribution}
-g_age_distribution <- plot_agegroup_proportion(case_age_data)
+g_age_distribution <- plot_agegroup_proportion(case_age_data, base_size = fig_base)
 print(g_age_distribution)
 ```
 
-### Combine and export Figure 1
+### Combine and export Fig 1
 ```{r export-fig1}
 top_row <- plot_grid(g_area_cases_map, g_area_death_map, g_health_region_map,
-                     nrow = 1, rel_widths = c(1, 1, 1), align = "h", labels = c("A", "B", "C"))
+                     nrow = 1, rel_widths = c(1, 1, 1), align = "h", labels = c("A", "B", "C"), label_size = fig_base + 2)
 bot_row <- plot_grid(g_reported_case, g_reported_death,g_age_distribution,
-                     nrow = 1, rel_widths = c(1, 1, 1), align = "h", labels = c("D", "E", "F"))
-combined <- plot_grid(top_row, bot_row, ncol = 1, rel_heights = c(2, 1))
+                     nrow = 1, rel_widths = c(1, 1, 1), align = "h", labels = c("D", "E", "F"), label_size = fig_base + 2)
+combined <- plot_grid(top_row, bot_row, ncol = 1, rel_heights = c(1.75, 1.25))
 print(combined)
 
 ```
 
 ```{r}
 if(export_plot){
-png(here("Plots", "Figure1.png"), width = 15, height = 10, units = "in", res = 300)
-print(combined)
-dev.off()
+export_figure(combined, "Fig1_study_overview", width = 7.5, height = 6.2, tiff = TRUE)
 }
 ```
 
-### Summary of Figure 1 components
+### Summary of Fig 1 components
 
 ```{r}
 # Nationwide case and deaths reports
@@ -418,14 +444,14 @@ summarise_reported_rates(case_data, population_data, by = character(0)) %>%
   kable(digits = 2, caption = "National reported incidence and mortality")
 ```
 
-## Figure 2: Estimated FOI by province
+## Fig 3: Estimated force of infection by province
 
 ### Extract FOI estimates, aggregated monthly to yearly
 ```{r}
 lambda_data <- extract_lambda_base()
 ```
 
-### 2.1 Plot FOI trends by province and region
+### 3.1 FOI trends by province and region
 ```{r}
 g_FOI <-  plot_foi_trends_inc_groups(
   lambda_data,
@@ -436,12 +462,13 @@ g_FOI <-  plot_foi_trends_inc_groups(
                        "< 100-100-1000", 
                        "100-1000-> 1000",
                        "100-1000-100-1000", 
-                       "100-1000-< 100") 
+                       "100-1000-< 100"),
+  base_size = 14
 )
 print(g_FOI)
 ```
 
-### 2.2 Bivariate map
+### 3.2 Bivariate map
 ```{r}
 p_bivar <- make_bivar_map(
             lambda_data, 
@@ -450,11 +477,12 @@ p_bivar <- make_bivar_map(
             legend_bbox = c(xmin = 101.0, xmax = 105.3, ymin = 7.5, ymax = 11.7),
             pal = "DkViolet2",
             flip_axes = TRUE, 
-            subtitle = "")
+            subtitle = "",
+            base_size = 14)
 print(p_bivar)
 ```
 
-### Combine Figure 2 components and export
+### Combine Fig 3 components and export
 ```{r}
 g_FOI_map <- g_FOI +
   p_bivar +
@@ -470,13 +498,11 @@ g_FOI_map
 
 ```{r}
 if(export_plot){
-png(here("Plots", "Figure2_map.png"), width = 15, height = 9, units = "in", res = 300)
-print(g_FOI_map)
-dev.off()
+export_figure(g_FOI_map, "Fig3_force_of_infection", width = 12, height = 8, tiff = TRUE)
 }
 ```
 
-## Figure 3: Seasonality patterns
+## Fig 5: Seasonality patterns
 
 ### Evaluate seasonality curves for each province and period
 ```{r}
@@ -499,7 +525,7 @@ seasonality_indices <- compute_seasonality_indices(season_prov_smooth)
 seasonality_indices <- cluster_seasonality(seasonality_indices, k = 3)
 ```
 
-### 3.1 Plot seasonality curves by cluster
+### 5.1 Seasonality curves by cluster
 
 ```{r}
 p_seasonality <- plot_seasonality_by_cluster(season_prov_smooth, seasonality_indices) +
@@ -508,7 +534,7 @@ p_seasonality <- plot_seasonality_by_cluster(season_prov_smooth, seasonality_ind
 print(p_seasonality)
 ```
 
-## 3.2 Map of seasonality clusters
+### 5.2 Map of seasonality clusters
 
 ```{r}
 g_seasonal_map <- plot_seasonality_map(seasonality_indices, 
@@ -521,7 +547,7 @@ g_seasonal_map <- plot_seasonality_map(seasonality_indices,
 print(g_seasonal_map)
 ```
 
-### 3.3 Trends in seasonality patterns over time
+### 5.3 Trends in seasonality patterns over time
 
 ```{r}
 g_trend_seasonal <- plot_seasonality_alluvial(seasonality_indices,
@@ -541,13 +567,11 @@ print(g_seasonal_combined)
 
 ```{r}
 if(export_plot){
-png(here("Plots", "Figure3_seasonality.png"), width = 10, height = 7, units = "in", res = 300)
-print(g_seasonal_combined)
-dev.off()
+export_figure(g_seasonal_combined, "Fig5_seasonality", width = 10, height = 7, tiff = TRUE)
 }
 ```
 
-### 3.4 Choice of K and robustness of the seasonal patterns
+### 5.4 Choice of K and robustness of the seasonal patterns (Figure S2)
 #### Cluster validity metrics
 
 Elbow (within-cluster sum of squares), average silhouette width,
@@ -565,15 +589,13 @@ cluster_metrics |>
 
 ```{r cluster-validity-plot}
 #| label: cluster-validity-plot
-g_cluster_validity <- plot_cluster_validity(cluster_metrics, k_selected = 3)
+g_cluster_validity <- plot_cluster_validity(cluster_metrics, k_selected = 3, base_size = 10)
 print(g_cluster_validity)
 ```
 
 ```{r}
 if(export_plot){
-png(here("Plots", "FigureSx_cluster_validity.png"), width = 12, height = 4, units = "in", res = 300)
-print(g_cluster_validity)
-dev.off()
+export_figure(g_cluster_validity, "FigureS2_cluster_validity", width = 7.5, height = 2.8)
 }
 ```
 
@@ -674,7 +696,7 @@ seasonality_p4_region %>% count(Climate, clusters) %>%
 seasonality_p4_region %>% filter(clusters == "Pattern 3") %>% select(Province, Region, Zone)
 ```
 
-## Figure 4: Case detection sensitivity
+## Fig 2: Reporting proportion
 
 ```{r}
 Se_summ <- summarise_Se_over_time()
@@ -688,9 +710,7 @@ print(g_case_sensitivity)
 
 ```{r}
 if(export_plot){
-png(here("Plots", "Figure4_case_sensitivity.png"), width = 12, height = 8, units = "in", res = 300)
-print(g_case_sensitivity)
-dev.off()
+export_figure(g_case_sensitivity, "Fig2_reporting_proportion", width = 12, height = 8, tiff = TRUE)
 }
 ```
 
@@ -707,9 +727,9 @@ Se_summ %>%
   print(n = Inf)
 ```
 
-## Figure 5: Age specific susceptibility and case-fatality rate
+## Fig 4: Age-specific susceptibility and case-fatality rate
 
-### 5.1 Age susceptibility
+### 4.1 Age susceptibility
 
 ```{r}
 rho_summ <- summarise_relative_susceptibility(fit = fit, age_levels = age_levels)
@@ -727,7 +747,7 @@ rho_summ %>%
   print(n = Inf)
 ```
 
-### 5.2 Case-fatality rate
+### 4.2 Case-fatality rate
 
 ```{r}
 CFR_summ <- summarise_cfr(fit = fit, age_levels = age_levels)
@@ -754,9 +774,7 @@ print(combined_age_plot)
 
 ```{r}
 if(export_plot){
-png(here("Plots", "Figure5_age_susceptibility_cfr.png"), width = 10, height = 6, units = "in", res = 300)
-print(combined_age_plot)
-dev.off()
+export_figure(combined_age_plot, "Fig4_age_susceptibility_cfr", width = 10, height = 6, tiff = TRUE)
 }
 ```
 
@@ -766,6 +784,46 @@ CFR_summ %>%
   print(n = Inf)
 ```
 
+
+## Sensitivity analysis results: nu and omega (Text S4, Figures S3-S5)
+
+Compares the baseline fit with the four refits from "Sensitivity analysis: nu
+and omega" above. Summaries are computed once from `Rout/fit_<scenario>.RData`
+(about one minute per fit) and cached in `Rout/sensitivity_summary.rds`. For
+each fit, only the largest set of chains that mix with each other (rank-normalised
+R-hat < 1.1 for all key parameters) is used; excluded chains are reported in the
+table and figure labels. Delete the cache after changing the selection rule.
+
+```{r sensitivity-comparison}
+#| label: sensitivity-comparison
+sensitivity_fits <- c("Full", names(sensitivity_scenarios))
+sens_file <- here("Rout", "sensitivity_summary.rds")
+if (file.exists(sens_file)) {
+  sens <- readRDS(sens_file)
+} else {
+  sens <- map(set_names(sensitivity_fits), summarise_sensitivity_fit)
+  saveRDS(sens, sens_file)
+}
+sens <- sens[c("Full", "nu_x0.5", "nu_x2", "omega_x0.5", "omega_x2")]
+
+sens_table <- sensitivity_summary_table(sens)
+sens_table %>%
+  mutate(across(where(is.double), ~ round(.x, 2))) %>%
+  kable(caption = "Sensitivity of key estimates to the clinical fraction and IgG waning rate")
+
+g_sens_foi <- plot_sensitivity_foi(sens)
+g_sens_reporting <- plot_sensitivity_reporting(sens)
+g_sens_age <- plot_sensitivity_age(sens, age_levels)
+print(g_sens_foi); print(g_sens_reporting); print(g_sens_age)
+```
+
+```{r}
+if(export_plot){
+export_figure(g_sens_foi, "FigureS3_sensitivity_foi", width = 7.5, height = 6.5)
+export_figure(g_sens_reporting, "FigureS4_sensitivity_reporting", width = 7.5, height = 8.5)
+export_figure(g_sens_age, "FigureS5_sensitivity_age", width = 7.5, height = 6.5)
+}
+```
 
 ## Source data for figures (S1 Data)
 
@@ -844,8 +902,22 @@ source_data <- list(
               peak_month, peak_multiplier = peak_mult, amplitude_ratio = amp_ratio,
               posterior_membership_probability = p_assigned),
 
-  # Supplementary figure: choice of K
-  figSx_cluster_validity = cluster_metrics
+  # Figure S2: choice of K
+  figS2_cluster_validity = cluster_metrics,
+
+  # Figures S3-S5 and Table S4.1: sensitivity to nu and omega
+  figS3_sensitivity_foi = map_dfr(sens, \(s) s$foi |> mutate(scenario = sensitivity_labels[[s$scenario]])) %>%
+    transmute(scenario, province, health_region, year,
+              annual_foi_median = median, annual_foi_lower_95 = lower, annual_foi_upper_95 = upper),
+  figS4_sensitivity_reporting = map_dfr(sens, \(s) s$reporting |> mutate(scenario = sensitivity_labels[[s$scenario]])) %>%
+    transmute(scenario, health_region, year, median, lower_95 = lower, upper_95 = upper),
+  figS5_sensitivity_age = bind_rows(
+    map_dfr(sens, \(s) s$rho |> transmute(scenario = sensitivity_labels[[s$scenario]], quantity = "relative susceptibility",
+                                          period = period_labels[period], age_group, mean, lower_95 = q025, upper_95 = q975)),
+    map_dfr(sens, \(s) s$cfr |> transmute(scenario = sensitivity_labels[[s$scenario]], quantity = "relative case-fatality rate",
+                                          period = period_labels[period], age_group = as.character(age_group),
+                                          mean = mean_rel_CFR, lower_95 = q025_ref_CFR, upper_95 = q975_rel_CFR))),
+  tableS4_sensitivity_summary = sens_table
 )
 
 readme <- tibble(
@@ -860,7 +932,11 @@ readme <- tibble(
     "Case-fatality rate among reported cases (%) and relative case-fatality rate by period and age group, posterior mean and 95% CrI (Fig 4, right)",
     "Seasonal multiplier by province, period and month, posterior median and 95% CrI (Fig 5)",
     "Seasonal pattern features, assigned pattern and posterior membership probability by province and period (Fig 5)",
-    "Cluster validity metrics for K = 1-8 (supplementary figure on the choice of K)"
+    "Cluster validity metrics for K = 1-8 (Figure S2)",
+    "Annual FOI by province and year under each sensitivity scenario, posterior median and 95% CrI (Figure S3)",
+    "Reporting proportion by health region and year under each sensitivity scenario, posterior median and 95% CrI (Figure S4)",
+    "Relative susceptibility and relative case-fatality rate by period and age group under each sensitivity scenario, posterior mean and 95% CrI (Figure S5)",
+    "Convergence and key estimates relative to baseline for each sensitivity scenario (Table S4.1)"
   )
 )
 
@@ -873,13 +949,12 @@ readme %>% mutate(rows = map_int(source_data, nrow)) %>% kable()
 
 ## Posterior predictive checks and additional diagnostics
 
-```{r}
-# Create output directory if it doesn't exist
-dir_create(here("Plots", "predictive_check", dataset))
-S <- stan_data$S
-T <- stan_data$T
-Y <- stan_data$Y
-# Collect plots in a list
+```{r posterior-predictive-check}
+#| label: posterior-predictive-check
+# Pages of observed vs predicted monthly cases (4 provinces per page)
+dir.create(here("Plots", "predictive_check", dataset), recursive = TRUE, showWarnings = FALSE)
+S <- stan_data$S   # used by ppc_cases_by_province()
+set.seed(seed)     # replicate draws are simulated
 
 plot_list <- vector("list", S)
 for (s_idx in seq_len(S)) {
@@ -919,8 +994,7 @@ for (i in seq_len(n_pages)) {
 if(export_plot){
   supp_dir <- here("Plots", "Supplementary")
   dir.create(supp_dir, recursive = TRUE, showWarnings = FALSE)
-  
-  source(here("Scripts", "plot_functions.R"))
+  set.seed(seed)
   
   # Build province summary table (once, used for all provinces)
   prov_summ <- build_province_summary(
@@ -957,9 +1031,9 @@ if(export_plot){
 ```
 
 
-## 2. Model Diagnostics
+## Convergence summary
 
-### 2.1 Convergence Summary
+
 
 ```{r convergence}
 #| label: convergence

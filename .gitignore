@@ -1,3 +1,4 @@
+/Archive
 /Rout
 
 # R session and macOS files
@@ -5,3 +6,4 @@
 .RData
 .Rproj.user/
 .DS_Store
+/draft
