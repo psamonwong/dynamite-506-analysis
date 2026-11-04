@@ -1,1 +1,7 @@
 /Rout
+
+# R session and macOS files
+.Rhistory
+.RData
+.Rproj.user/
+.DS_Store
