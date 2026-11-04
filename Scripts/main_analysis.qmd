@@ -146,7 +146,7 @@ model_settings <- data.frame(
   seed = getOption("stan.seed", seed)
 )
 
-model_file <-  "model10.stan"
+model_file <- "Model10.stan"
 
 save(model_settings, model_file, file = here("Rout", paste("model_settings_", dataset, ".RData", sep = "")))
 ```
@@ -219,7 +219,7 @@ if (PREP_SENSITIVITY) {
 
 # Fit one scenario at a time (blocking system() calls), reusing
 # run_models_local.R exactly as the baseline model does.
-RUN_SENSITIVITY <- T
+RUN_SENSITIVITY <- F
 if (RUN_SENSITIVITY) {
   for (scenario_name in names(sensitivity_scenarios)) {
     message(sprintf("[%s] Fitting scenario: %s", Sys.time(), scenario_name))
@@ -271,17 +271,17 @@ g_reported_death <- plot_death_bar(case_data, base_size = 14)
 print(g_reported_death)
 ```
 
-### 1.4 Maps of cases by province
+### 1.4 Maps of reported incidence by province
 ```{r fig1-map}
 #| label: fig1-map
-g_area_cases_map <- plot_area_cases_map(case_data, map_data)
+g_area_cases_map <- plot_area_cases_map(case_data, population_data, map_data)
 print(g_area_cases_map)
 ```
 
-### 1.5 Maps of deaths by province
+### 1.5 Maps of reported mortality by province
 ```{r fig1-map2}
 #| label: fig1-map2
-g_area_death_map <- plot_area_deaths_map(case_data, map_data)
+g_area_death_map <- plot_area_deaths_map(case_data, population_data, map_data)
 print(g_area_death_map)
 ```
 
@@ -376,6 +376,48 @@ case_age_data %>%
 
 
 
+### Population-standardised reported incidence and mortality
+
+Average annual reported incidence per 100,000 and mortality per 1,000,000
+population (Fig 1A-B), by province and health region, with directly
+age-standardised rates (2004-2024, pooled national population as standard)
+as a check that rankings are not driven by differences in age structure.
+
+```{r reported-rates-province}
+#| label: reported-rates-province
+province_rates <- summarise_reported_rates(case_data, population_data) %>%
+  left_join(summarise_age_standardised_rates(case_age_data, population_data), by = "Area")
+
+province_rates %>%
+  arrange(desc(incidence_100k)) %>%
+  select(Area, Zone, cases, incidence_100k, asr_incidence_100k) %>%
+  head(10) %>%
+  kable(digits = 1, caption = "Provinces with the highest average annual reported incidence per 100,000")
+
+province_rates %>%
+  arrange(desc(mortality_1m)) %>%
+  select(Area, Zone, deaths, mortality_1m, asr_mortality_1m) %>%
+  head(10) %>%
+  kable(digits = 2, caption = "Provinces with the highest average annual reported mortality per 1,000,000")
+
+province_rates %>%
+  summarise(
+    spearman_incidence = cor(incidence_100k, asr_incidence_100k, method = "spearman", use = "complete.obs"),
+    spearman_mortality = cor(mortality_1m, asr_mortality_1m, method = "spearman", use = "complete.obs")
+  )
+```
+
+```{r reported-rates-region}
+#| label: reported-rates-region
+summarise_reported_rates(case_data, population_data, by = "Zone") %>%
+  mutate(share_cases = 100 * cases / sum(cases)) %>%
+  arrange(desc(incidence_100k)) %>%
+  kable(digits = 2, caption = "Reported incidence and mortality by health region")
+
+summarise_reported_rates(case_data, population_data, by = character(0)) %>%
+  kable(digits = 2, caption = "National reported incidence and mortality")
+```
+
 ## Figure 2: Estimated FOI by province
 
 ### Extract FOI estimates, aggregated monthly to yearly
@@ -450,6 +492,9 @@ season_prov_smooth <- eval_seasonality_curves(
 ### Compute seasonality indices and cluster provinces
 
 ```{r}
+# K = 3 is justified in section 3.4. With nstart = 25 the partition does not
+# depend on the seed; set.seed only makes the k-means starts reproducible.
+set.seed(seed)
 seasonality_indices <- compute_seasonality_indices(season_prov_smooth)
 seasonality_indices <- cluster_seasonality(seasonality_indices, k = 3)
 ```
@@ -502,37 +547,131 @@ dev.off()
 }
 ```
 
-### 3.4 Elbow plot for cluster number selection
+### 3.4 Choice of K and robustness of the seasonal patterns
+#### Cluster validity metrics
 
-```{r}
-g_elbow <- elbow_plot(seasonality_indices)
-print(g_elbow)
+Elbow (within-cluster sum of squares), average silhouette width,
+gap statistic and bootstrap stability (median and 5th percentile adjusted Rand index between the full-data partition and partitions refitted on 200 bootstrap resamples) for K = 1 to 8.
+
+```{r cluster-validity}
+#| label: cluster-validity
+set.seed(seed)
+cluster_metrics <- cluster_validity_metrics(seasonality_indices, k_range = 1:8)
+
+cluster_metrics |>
+  mutate(across(where(is.double), ~ round(.x, 3))) |>
+  kable(caption = "Cluster validity metrics for k-means on seasonal features")
+```
+
+```{r cluster-validity-plot}
+#| label: cluster-validity-plot
+g_cluster_validity <- plot_cluster_validity(cluster_metrics, k_selected = 3)
+print(g_cluster_validity)
 ```
 
 ```{r}
 if(export_plot){
-png(here("Plots", "FigureSx_elbow.png"), width = 6, height = 4, units = "in", res = 300)
-print(g_elbow)
+png(here("Plots", "FigureSx_cluster_validity.png"), width = 12, height = 4, units = "in", res = 300)
+print(g_cluster_validity)
 dev.off()
 }
 ```
-.
 
-```{r}
-seasonality_indices %>%
+#### What separates the patterns
+```{r cluster-feature-summary}
+#| label: cluster-feature-summary
+seasonality_indices |>
+  group_by(clusters) |>
+  summarise(
+    n = n(),
+    peak_month = sprintf("%.1f (%.1f-%.1f)", median(peak_month), min(peak_month), max(peak_month)),
+    amp_ratio = sprintf("%.2f (%.2f-%.2f)", median(amp_ratio), min(amp_ratio), max(amp_ratio)),
+    .groups = "drop"
+  ) |>
+  kable(caption = "Median (range) of peak month and amplitude ratio by pattern")
+
+set.seed(seed)
+cluster_encoding_sensitivity(seasonality_indices, k = 3) |>
+  mutate(ari_vs_main = round(ari_vs_main, 3)) |>
+  kable(caption = "Agreement (ARI) of K = 3 partitions under alternative feature encodings")
+```
+
+#### Posterior uncertainty in pattern membership
+```{r cluster-posterior-membership}
+#| label: cluster-posterior-membership
+draw_membership <- seasonality_draw_membership(fit, seasonality_indices, H = 3, P = 4)
+
+membership_prob <- draw_membership |>
+  left_join(seasonality_indices |>
+              transmute(region = as.character(region), period = as.character(period), clusters),
+            by = c("region", "period")) |>
+  group_by(region, period, clusters) |>
+  summarise(p_assigned = mean(draw_cluster == clusters), .groups = "drop")
+
+membership_prob |>
+  summarise(
+    median_p = median(p_assigned),
+    share_p_ge_0.5 = mean(p_assigned >= 0.5),
+    share_p_ge_0.8 = mean(p_assigned >= 0.8)
+  )
+
+membership_prob |>
+  group_by(clusters) |>
+  summarise(median_p = median(p_assigned), share_p_ge_0.8 = mean(p_assigned >= 0.8))
+```
+
+```{r cluster-posterior-stability}
+#| label: cluster-posterior-stability
+
+# Provinces that never changed pattern: point estimate vs posterior distribution
+n_unchanged_point <- seasonality_indices %>%
   group_by(region) %>%
   summarise(n_clusters = n_distinct(clusters)) %>%
   filter(n_clusters == 1) %>%
-  summarise(count = n())
+  nrow()
+
+n_unchanged_draws <- draw_membership |>
+  group_by(.draw, region) |>
+  summarise(unchanged = n_distinct(draw_cluster) == 1, .groups = "drop") |>
+  group_by(.draw) |>
+  summarise(n = sum(unchanged))
+
+tibble(
+  estimate = c("Posterior-median curves", "Posterior draws: median",
+               "Posterior draws: 2.5%", "Posterior draws: 97.5%"),
+  n_unchanged = c(n_unchanged_point, quantile(n_unchanged_draws$n, c(0.5, 0.025, 0.975)))
+) |>
+  mutate(pct_provinces = round(100 * n_unchanged / stan_data$S, 1)) |>
+  kable(caption = "Provinces that kept the same pattern in all four periods")
 ```
 
-```{r}
+#### Pattern shares and geographic distribution
+
+```{r cluster-period-proportions}
+#| label: cluster-period-proportions
 seasonality_indices %>%
   group_by(period, clusters) %>%
   summarise(n = n(), .groups = "drop") %>%
   group_by(period) %>%
   mutate(proportion = n / sum(n)) %>%
   arrange(period, clusters)
+```
+
+```{r cluster-region-distribution}
+#| label: cluster-region-distribution
+# Pattern membership in 2019-2024 by geographic region (Fig. 5 map)
+area_list <- read_csv(here("Analysis_Data", "area_list.csv"), show_col_types = FALSE)
+
+seasonality_p4_region <- seasonality_indices %>%
+  filter(period == "Period 4") %>%
+  mutate(Province = site_levels[as.integer(sub("Province ", "", region))]) %>%
+  left_join(area_list, by = "Province")
+
+seasonality_p4_region %>% count(Climate, clusters) %>%
+  pivot_wider(names_from = clusters, values_from = n, values_fill = 0) %>%
+  kable(caption = "Provinces per pattern in 2019-2024 by geographic region")
+
+seasonality_p4_region %>% filter(clusters == "Pattern 3") %>% select(Province, Region, Zone)
 ```
 
 ## Figure 4: Case detection sensitivity
@@ -627,6 +766,110 @@ CFR_summ %>%
   print(n = Inf)
 ```
 
+
+## Source data for figures (S1 Data)
+
+Numerical data underlying Figs 1-5 and the cluster-validity figure, written to
+`Source_data/` as CSV files and combined into `Source_data/S1_Data.xlsx` (one
+sheet per file plus a README sheet). Figure numbers follow the manuscript.
+Posterior summaries are medians or means with 95% credible intervals, matching
+the corresponding figure.
+
+```{r source-data-export}
+#| label: source-data-export
+library(writexl)
+
+source_dir <- here("Source_data")
+dir.create(source_dir, showWarnings = FALSE)
+
+period_labels <- c("Period 1" = "2003-2007", "Period 2" = "2008-2012",
+                   "Period 3" = "2013-2018", "Period 4" = "2019-2024")
+health_region <- function(zone) paste0("Health Region ", as.integer(sub("Zone", "", zone)))
+foi_to_incidence <- function(foi) (1 - exp(-foi)) * 1e5
+
+source_data <- list(
+  # Fig 1: reported surveillance data
+  fig1_reported_province_year = case_data %>%
+    group_by(province = Area, health_region = health_region(Zone), year) %>%
+    summarise(reported_cases = sum(case), reported_deaths = sum(death), .groups = "drop") %>%
+    left_join(population_data %>% group_by(province = Province, year) %>%
+                summarise(population = sum(Total), .groups = "drop"),
+              by = c("province", "year")),
+  fig1_reported_rates_province = province_rates %>%
+    transmute(province = Area, health_region = health_region(Zone), reported_cases = cases,
+              reported_deaths = deaths, person_years,
+              incidence_per_100k = incidence_100k, mortality_per_1m = mortality_1m,
+              age_standardised_incidence_per_100k = asr_incidence_100k,
+              age_standardised_mortality_per_1m = asr_mortality_1m),
+  fig1_reported_age_distribution = case_age_data %>%
+    group_by(age_group = age_group_new) %>%
+    summarise(reported_cases = sum(case), reported_deaths = sum(death), .groups = "drop") %>%
+    mutate(percent_cases = 100 * reported_cases / sum(reported_cases),
+           percent_deaths = 100 * reported_deaths / sum(reported_deaths)),
+
+  # Fig 2: reporting proportion
+  fig2_reporting_proportion = Se_summ %>%
+    transmute(health_region = as.character(region), year,
+              median = q500, lower_95 = q025, upper_95 = q975),
+
+  # Fig 3: annual force of infection and estimated infection incidence
+  fig3_foi_incidence = lambda_data %>%
+    transmute(province, health_region = health_region(region), year,
+              annual_foi_median = q500, annual_foi_lower_95 = q025, annual_foi_upper_95 = q975,
+              incidence_per_100k_median = foi_to_incidence(q500),
+              incidence_per_100k_lower_95 = foi_to_incidence(q025),
+              incidence_per_100k_upper_95 = foi_to_incidence(q975)),
+
+  # Fig 4: age-specific relative susceptibility and case-fatality
+  fig4_relative_susceptibility = rho_summ %>%
+    transmute(period = period_labels[period], age_group,
+              mean, lower_95 = q025, upper_95 = q975),
+  fig4_case_fatality = CFR_summ %>%
+    transmute(period = period_labels[period], age_group = as.character(age_group),
+              cfr_percent_mean = 100 * mean, cfr_percent_lower_95 = 100 * q025,
+              cfr_percent_upper_95 = 100 * q975,
+              relative_cfr_mean = mean_rel_CFR, relative_cfr_lower_95 = q025_ref_CFR,
+              relative_cfr_upper_95 = q975_rel_CFR),
+
+  # Fig 5: seasonal multipliers and pattern assignment
+  fig5_seasonal_multiplier = season_prov_smooth %>%
+    transmute(province = site_levels[as.integer(sub("Province ", "", entity))],
+              period = period_labels[as.character(period)], month = x,
+              median = q500, lower_95 = q025, upper_95 = q975),
+  fig5_seasonal_patterns = seasonality_indices %>%
+    left_join(membership_prob %>% select(region, period, p_assigned),
+              by = c("region", "period")) %>%
+    transmute(province = site_levels[as.integer(sub("Province ", "", region))],
+              period = period_labels[as.character(period)], pattern = as.character(clusters),
+              peak_month, peak_multiplier = peak_mult, amplitude_ratio = amp_ratio,
+              posterior_membership_probability = p_assigned),
+
+  # Supplementary figure: choice of K
+  figSx_cluster_validity = cluster_metrics
+)
+
+readme <- tibble(
+  sheet = names(source_data),
+  description = c(
+    "Reported cases, deaths and population by province and year (Fig 1)",
+    "Average annual reported incidence per 100,000 and mortality per 1,000,000 by province, crude and age-standardised (Fig 1A-B)",
+    "Reported cases and deaths by age group, 2004-2024 (Fig 1F)",
+    "Estimated reporting proportion by health region and year, posterior median and 95% CrI (Fig 2)",
+    "Estimated annual force of infection and infection incidence per 100,000 at-risk population by province and year, posterior median and 95% CrI (Fig 3)",
+    "Relative susceptibility by period and age group, posterior mean and 95% CrI (Fig 4, left)",
+    "Case-fatality rate among reported cases (%) and relative case-fatality rate by period and age group, posterior mean and 95% CrI (Fig 4, right)",
+    "Seasonal multiplier by province, period and month, posterior median and 95% CrI (Fig 5)",
+    "Seasonal pattern features, assigned pattern and posterior membership probability by province and period (Fig 5)",
+    "Cluster validity metrics for K = 1-8 (supplementary figure on the choice of K)"
+  )
+)
+
+iwalk(source_data, \(d, name) write_csv(d, file.path(source_dir, paste0(name, ".csv"))))
+write_csv(readme, file.path(source_dir, "README.csv"))
+write_xlsx(c(list(README = readme), source_data), file.path(source_dir, "S1_Data.xlsx"))
+
+readme %>% mutate(rows = map_int(source_data, nrow)) %>% kable()
+```
 
 ## Posterior predictive checks and additional diagnostics
 

@@ -113,24 +113,79 @@ plot_health_regions <- function(map_data,
   return(p)
 }
 ##################################################################################
-plot_area_cases_map <- function(case_data, map_data) {
-  area_summary <- case_data |>
-    group_by(Area) |>
-    summarize(
-      cases = sum(case, na.rm = TRUE)
-    )
+# Average annual reported incidence (per 100,000) and mortality (per 1,000,000)
+# by province, using the model's population data as the denominator.
+# Province-years without population data (Bungkan, 2011) are excluded from
+# both numerator and denominator.
+summarise_reported_rates <- function(case_data, population_data, by = c("Area", "Zone")) {
+  pop_year <- population_data |>
+    group_by(Province, year) |>
+    summarise(population = sum(Total), .groups = "drop")
 
+  case_data |>
+    group_by(Area, Zone, year) |>
+    summarise(cases = sum(case), deaths = sum(death), .groups = "drop") |>
+    left_join(pop_year, by = c("Area" = "Province", "year")) |>
+    filter(!is.na(population)) |>
+    group_by(across(all_of(by))) |>
+    summarise(
+      cases = sum(cases),
+      deaths = sum(deaths),
+      person_years = sum(population),
+      .groups = "drop"
+    ) |>
+    mutate(
+      incidence_100k = cases / person_years * 1e5,
+      mortality_1m = deaths / person_years * 1e6
+    )
+}
+
+# Directly age-standardised reported incidence and mortality by province,
+# using the pooled national population over the same years as the standard.
+summarise_age_standardised_rates <- function(case_age_data, population_data) {
+  age_map <- c("0 to 4" = "0 to 5", "5 to 14" = "5 to 15", "15 to 24" = "15 to 25",
+               "25 to 34" = "25 to 35", "35 to 44" = "35 to 45", "45 to 54" = "45 to 55",
+               "55 to 64" = "55 to 65", "above 65" = "above 65")
+  years <- range(case_age_data$year)
+
+  pop_age <- population_data |>
+    filter(between(year, years[1], years[2])) |>
+    mutate(age_group_new = age_map[age_group]) |>
+    group_by(Province, age_group_new) |>
+    summarise(person_years = sum(Total), .groups = "drop")
+
+  standard <- pop_age |>
+    group_by(age_group_new) |>
+    summarise(weight = sum(person_years), .groups = "drop") |>
+    mutate(weight = weight / sum(weight))
+
+  case_age_data |>
+    filter(age_group_new != "unknown") |>
+    group_by(Area, age_group_new) |>
+    summarise(cases = sum(case), deaths = sum(death), .groups = "drop") |>
+    left_join(pop_age, by = c("Area" = "Province", "age_group_new")) |>
+    left_join(standard, by = "age_group_new") |>
+    group_by(Area) |>
+    summarise(
+      asr_incidence_100k = sum(weight * cases / person_years) * 1e5,
+      asr_mortality_1m = sum(weight * deaths / person_years) * 1e6,
+      .groups = "drop"
+    )
+}
+
+plot_rate_map <- function(rates, map_data, value, name, colours, breaks) {
   map_joined <- map_data |>
-    left_join(area_summary, by = c("Provinc" = "Area"))
+    left_join(rates, by = c("Provinc" = "Area"))
 
   ggplot() +
-    geom_sf(data = map_joined, aes(fill = cases), color = "white", size = 0.15) +
+    geom_sf(data = map_joined, aes(fill = .data[[value]]), color = "white", size = 0.15) +
     scale_fill_gradientn(
-      colours = c('#DEDED1','#94B4C1','#547792','#213448'),
+      colours = colours,
       na.value = "grey90",
-      labels = scales::comma,
-      name = "Cumulative reported cases\n(2003-2024)",
-      limits = c(0, 18000)
+      trans = "sqrt",
+      breaks = breaks,
+      labels = scales::label_number(accuracy = 0.1, drop0trailing = TRUE),
+      name = name
     ) +
     coord_sf(xlim = c(96, 106), ylim = c(5, 21), expand = FALSE) +
     theme_void(base_size = 14) +
@@ -144,37 +199,25 @@ plot_area_cases_map <- function(case_data, map_data) {
       plot.margin = margin(1, 1, 1, 1, unit = "pt")
     )
 }
-##################################################################################
-plot_area_deaths_map <- function(case_data, map_data) {
-  area_summary <- case_data |>
-    group_by(Area) |>
-    summarize(
-      deaths = sum(death, na.rm = TRUE)
-    )
 
-  map_joined <- map_data |>
-    left_join(area_summary, by = c("Provinc" = "Area"))
+plot_area_cases_map <- function(case_data, population_data, map_data) {
+  plot_rate_map(
+    summarise_reported_rates(case_data, population_data), map_data,
+    value = "incidence_100k",
+    name = "Average annual reported\nincidence per 100,000\n(2003-2024)",
+    colours = c('#DEDED1','#94B4C1','#547792','#213448'),
+    breaks = c(1, 10, 50, 100, 200)
+  )
+}
 
-  ggplot() +
-    geom_sf(data = map_joined, aes(fill = deaths), color = "white", size = 0.15) +
-    scale_fill_gradientn(
-      colours = c('#DEDED1','#B6AE9F','#D34E4E','#BF1A1A'),
-      na.value = "grey90",
-      labels = scales::comma,
-      name = "Cumulative reported deaths\n(2003-2024)",
-      limits = c(0, 30)
-    ) +
-    coord_sf(xlim = c(96, 106), ylim = c(5, 21), expand = FALSE) +
-    theme_void(base_size = 14) +
-    theme(
-      legend.position = c(0.80, 0.25),
-      legend.title = element_text(size = 11, lineheight = 0.95),
-      legend.text = element_text(size = 10),
-      legend.key.height = unit(0.55, "cm"),
-      legend.key.width = unit(0.35, "cm"),
-      legend.spacing.y = unit(0.1, "cm"),
-      plot.margin = margin(1, 1, 1, 1, unit = "pt")
-    )
+plot_area_deaths_map <- function(case_data, population_data, map_data) {
+  plot_rate_map(
+    summarise_reported_rates(case_data, population_data), map_data,
+    value = "mortality_1m",
+    name = "Average annual reported\ndeaths per 1,000,000\n(2003-2024)",
+    colours = c('#DEDED1','#B6AE9F','#D34E4E','#BF1A1A'),
+    breaks = c(0, 0.1, 0.5, 1, 1.5)
+  )
 }
 ##################################################################################
 plot_case_bar <- function(case_data, base_size = 14) {
@@ -226,7 +269,7 @@ plot_agegroup_proportion <- function(case_age_data) {
   ggplot(age_summary, aes(x = age_group_new, y = proportion, fill = type)) +
     geom_col(position = "dodge", alpha = 0.8) +
     scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-    labs(x = "", y = "", fill = "", title = "Age distribution of cases and deaths") +
+    labs(x = "", y = "", fill = "", title = "Age distribution of\nreported cases and deaths") +
     scale_fill_manual(values = c("cases" = "#213448", "deaths" = "#BF1A1A")) +
     theme_bw(base_size = 14) +
     coord_flip() +
@@ -457,7 +500,7 @@ class_tbl <- lambda_inc |>
       labels = scales::label_scientific(digits = 1),
       sec.axis = sec_axis(
         transform = ~ (1 - exp(-.)) * 100000,
-        name = "Estimated annual incidence\n(per 100,000 at-risk population)",
+        name = "Estimated annual infection incidence\n(per 100,000 at-risk population)",
         labels = scales::label_comma(accuracy = 1)
       )
     ) +
@@ -712,21 +755,143 @@ plot_seasonality_by_cluster <- function(season_curves, indices) {
     scale_fill_manual(values = c("#F88A40", "#3E8359", "#5B96C5"))
 }
 
-elbow_plot <- function(indices, max_k = 10, exclude_cols = c("region", "period", "clusters", "trough_month", "trough_mult", "amp_ratio")) {
-  selected <- indices |> select(-all_of(exclude_cols))
-  wss <- sapply(1:max_k, function(k) {
-    kmeans(selected, centers = k, nstart = 25)$tot.withinss
+###############################################################################
+# Choice of K for seasonal clustering (cluster validity and robustness)
+
+# Same features as cluster_seasonality(): peak_month, peak_mult, amp_log
+seasonality_feature_matrix <- function(indices,
+  exclude_cols = c("region", "period", "trough_month", "trough_mult", "amp_ratio")) {
+  indices |> select(-any_of(c(exclude_cols, "clusters"))) |> as.matrix()
+}
+
+adjusted_rand_index <- function(a, b) {
+  tab <- table(a, b)
+  sum_ij <- sum(choose(tab, 2))
+  sum_a <- sum(choose(rowSums(tab), 2))
+  sum_b <- sum(choose(colSums(tab), 2))
+  expected <- sum_a * sum_b / choose(sum(tab), 2)
+  (sum_ij - expected) / ((sum_a + sum_b) / 2 - expected)
+}
+
+# Index of the nearest centre (Euclidean) for each row of X
+assign_nearest_centre <- function(X, centres) {
+  apply(X, 1, function(x) which.min(colSums((t(centres) - x)^2)))
+}
+
+# Elbow (WSS), average silhouette width, gap statistic
+# and bootstrap stability (ARI between the full-data partition and partitions
+# refitted on bootstrap resamples) for each K
+cluster_validity_metrics <- function(indices, k_range = 1:8, nstart = 25,
+                                     n_boot = 200, gap_B = 100) {
+  X <- seasonality_feature_matrix(indices)
+  d <- dist(X)
+  n <- nrow(X)
+
+  gap_tab <- cluster::clusGap(X, FUNcluster = kmeans, K.max = max(k_range),
+                              B = gap_B, nstart = nstart, iter.max = 50)$Tab
+
+  purrr::map_dfr(k_range, function(k) {
+    km <- kmeans(X, centers = k, nstart = nstart)
+    if (k == 1) {
+      sil <- NA_real_; boot_ari <- NA_real_
+    } else {
+      sil <- mean(cluster::silhouette(km$cluster, d)[, "sil_width"])
+      boot_ari <- replicate(n_boot, {
+        b <- sample(n, replace = TRUE)
+        km_b <- kmeans(X[b, ], centers = k, nstart = 10)
+        adjusted_rand_index(km$cluster, assign_nearest_centre(X, km_b$centers))
+      })
+    }
+    tibble::tibble(
+      k = k,
+      wss = km$tot.withinss,
+      silhouette = sil,
+      gap = gap_tab[k, "gap"],
+      gap_se = gap_tab[k, "SE.sim"],
+      boot_ari_median = median(boot_ari),
+      boot_ari_q05 = unname(quantile(boot_ari, 0.05, na.rm = TRUE)),
+      cluster_sizes = paste(sort(table(km$cluster), decreasing = TRUE), collapse = "/")
+    )
   })
-  tibble::tibble(k = 1:max_k, wss = wss) %>%
-    ggplot(aes(x = k, y = wss)) +
-    geom_point(size = 2) +
+}
+
+plot_cluster_validity <- function(metrics, k_selected = 3) {
+  metric_labels <- c(
+    wss = "A. Elbow: within-cluster SS",
+    silhouette = "B. Average silhouette width",
+    boot_ari_median = "C. Bootstrap stability (ARI)"
+  )
+  plot_data <- metrics |>
+    select(k, all_of(names(metric_labels)), boot_ari_q05) |>
+    pivot_longer(all_of(names(metric_labels)), names_to = "metric", values_to = "value") |>
+    mutate(
+      lower = ifelse(metric == "boot_ari_median", boot_ari_q05, NA_real_),
+      metric = factor(metric, levels = names(metric_labels), labels = metric_labels)
+    ) |>
+    filter(!is.na(value))
+
+  ggplot(plot_data, aes(x = k, y = value)) +
+    geom_vline(xintercept = k_selected, linetype = "31", colour = "grey50") +
+    geom_linerange(aes(ymin = lower, ymax = value), colour = "grey60", na.rm = TRUE) +
     geom_line() +
-    labs(
-      x = "Number of clusters (k)",
-      y = "Total within-cluster sum of squares",
-      title = "Elbow Plot for K-means Clustering"
-    ) +
+    geom_point(size = 2) +
+    facet_wrap(~ metric, scales = "free_y", ncol = 3) +
+    scale_x_continuous(breaks = unique(metrics$k), minor_breaks = NULL) +
+    labs(x = "Number of clusters (K)", y = NULL) +
     theme_bw(base_size = 14)
+}
+
+# Agreement (ARI) of the K-cluster partition with alternative feature encodings
+cluster_encoding_sensitivity <- function(indices, k = 3, nstart = 25) {
+  X <- seasonality_feature_matrix(indices)
+  theta <- 2 * pi * X[, "peak_month"] / 12
+  encodings <- list(
+    # Peak month on the unit circle (Dec and Jan adjacent), radius in months
+    "Circular peak month" = cbind(cbind(cos(theta), sin(theta)) * 12 / (2 * pi),
+                                  X[, c("peak_mult", "amp_log")]),
+    "Peak month only" = X[, "peak_month", drop = FALSE],
+    "Standardised features" = scale(X)
+  )
+  baseline <- as.integer(indices$clusters)
+  tibble::tibble(
+    encoding = names(encodings),
+    ari_vs_main = purrr::map_dbl(encodings, \(Z) {
+      adjusted_rand_index(baseline, kmeans(Z, centers = k, nstart = nstart)$cluster)
+    })
+  )
+}
+
+# Assign every posterior draw of each province-period seasonal curve to the
+# nearest pattern centroid of the main (posterior-median) clustering
+seasonality_draw_membership <- function(fit, indices, H, P,
+                                        month_grid = seq(1, 12, length.out = 241)) {
+  dr <- rstan::extract(fit, pars = c("a_cos", "a_sin"))
+  S <- dim(dr$a_cos)[4]
+  n_iter <- dim(dr$a_cos)[1]
+  theta <- 2 * pi * month_grid / 12
+  cos_basis <- sapply(seq_len(H), \(h) cos(h * theta))
+  sin_basis <- sapply(seq_len(H), \(h) sin(h * theta))
+
+  X <- seasonality_feature_matrix(indices)
+  centres <- apply(X, 2, \(col) tapply(col, indices$clusters, mean))
+
+  purrr::map_dfr(seq_len(P), function(p) {
+    purrr::map_dfr(seq_len(S), function(s) {
+      mult <- exp(dr$a_cos[, , p, s] %*% t(cos_basis) + dr$a_sin[, , p, s] %*% t(sin_basis))
+      peak_mult <- apply(mult, 1, max)
+      draw_features <- cbind(
+        peak_month = month_grid[max.col(mult, ties.method = "first")],
+        peak_mult = peak_mult,
+        amp_log = log(peak_mult / apply(mult, 1, min))
+      )[, colnames(centres)]
+      tibble::tibble(
+        region = paste0("Province ", s),
+        period = paste0("Period ", p),
+        .draw = seq_len(n_iter),
+        draw_cluster = levels(indices$clusters)[assign_nearest_centre(draw_features, centres)]
+      )
+    })
+  })
 }
 ###############################################################################
 plot_seasonality_map <- function(seasonality_indices, map_data, 

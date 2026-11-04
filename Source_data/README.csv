@@ -1,0 +1,11 @@
+sheet,description
+fig1_reported_province_year,"Reported cases, deaths and population by province and year (Fig 1)"
+fig1_reported_rates_province,"Average annual reported incidence per 100,000 and mortality per 1,000,000 by province, crude and age-standardised (Fig 1A-B)"
+fig1_reported_age_distribution,"Reported cases and deaths by age group, 2004-2024 (Fig 1F)"
+fig2_reporting_proportion,"Estimated reporting proportion by health region and year, posterior median and 95% CrI (Fig 2)"
+fig3_foi_incidence,"Estimated annual force of infection and infection incidence per 100,000 at-risk population by province and year, posterior median and 95% CrI (Fig 3)"
+fig4_relative_susceptibility,"Relative susceptibility by period and age group, posterior mean and 95% CrI (Fig 4, left)"
+fig4_case_fatality,"Case-fatality rate among reported cases (%) and relative case-fatality rate by period and age group, posterior mean and 95% CrI (Fig 4, right)"
+fig5_seasonal_multiplier,"Seasonal multiplier by province, period and month, posterior median and 95% CrI (Fig 5)"
+fig5_seasonal_patterns,"Seasonal pattern features, assigned pattern and posterior membership probability by province and period (Fig 5)"
+figSx_cluster_validity,Cluster validity metrics for K = 1-8 (supplementary figure on the choice of K)
