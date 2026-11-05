@@ -39,9 +39,10 @@ case-fatality and seasonality for all 77 provinces of Thailand.
 
 Manuscript figures correspond to: Fig 1 study overview; Fig 2 reporting
 proportion; Fig 3 force of infection; Fig 4 age-specific susceptibility and
-case-fatality; Fig 5 seasonal patterns. Figure S1 is the posterior correlation
-between force of infection and reporting proportion; Figure S2 the choice of
-the number of seasonal clusters; Figures S3–S5 the sensitivity analysis.
+case-fatality; Fig 5 seasonal patterns. Supplementary Fig. S1 is the posterior correlation
+between force of infection and reporting proportion; Supplementary Fig. S2 the choice of
+the number of seasonal clusters; Supplementary Figs. S3–S5 the sensitivity analysis (files
+`Plots/FigureS1`–`FigureS5`).
 
 ## Data sources
 
@@ -51,6 +52,11 @@ the number of seasonal clusters; Figures S3–S5 the sensitivity analysis.
 - Population by province and age: Bureau of Registration Administration,
   Ministry of Interior, Thailand (publicly available).
 - Seroprevalence: Gonwong et al. (2022), *Am J Trop Med Hyg* 106(5):1363–1369.
+- Provincial boundaries (`Analysis_Data/thailand_map.*`): Royal Thai Survey
+  Department (RTSD), distributed by OCHA through the Humanitarian Data Exchange
+  (https://data.humdata.org/dataset/cod-ab-tha) under CC BY 3.0 IGO
+  (https://creativecommons.org/licenses/by/3.0/igo/). Health region, zone and
+  climate attributes were added for this study.
 
 Posterior predictive checks and MCMC trace plots are archived at
 https://doi.org/10.5281/zenodo.23941245.

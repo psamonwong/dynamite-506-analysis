@@ -571,7 +571,7 @@ export_figure(g_seasonal_combined, "Fig5_seasonality", width = 10, height = 7, t
 }
 ```
 
-### 5.4 Choice of K and robustness of the seasonal patterns (Figure S2)
+### 5.4 Choice of K and robustness of the seasonal patterns (Supplementary Fig. S2)
 #### Cluster validity metrics
 
 Elbow (within-cluster sum of squares), average silhouette width,
@@ -785,7 +785,7 @@ CFR_summ %>%
 ```
 
 
-## Sensitivity analysis results: nu and omega (Text S4, Figures S3-S5)
+## Sensitivity analysis results: nu and omega (Supplementary Text S3, Supplementary Figs. S3-S5)
 
 Compares the baseline fit with the four refits from "Sensitivity analysis: nu
 and omega" above. Summaries are computed once from `Rout/fit_<scenario>.RData`
@@ -905,7 +905,7 @@ source_data <- list(
   # Figure S2: choice of K
   figS2_cluster_validity = cluster_metrics,
 
-  # Figures S3-S5 and Table S4.1: sensitivity to nu and omega
+  # Supplementary Figs. S3-S5 and Table A in Supplementary Text S3: sensitivity to nu and omega
   figS3_sensitivity_foi = map_dfr(sens, \(s) s$foi |> mutate(scenario = sensitivity_labels[[s$scenario]])) %>%
     transmute(scenario, province, health_region, year,
               annual_foi_median = median, annual_foi_lower_95 = lower, annual_foi_upper_95 = upper),
@@ -917,7 +917,7 @@ source_data <- list(
     map_dfr(sens, \(s) s$cfr |> transmute(scenario = sensitivity_labels[[s$scenario]], quantity = "relative case-fatality rate",
                                           period = period_labels[period], age_group = as.character(age_group),
                                           mean = mean_rel_CFR, lower_95 = q025_ref_CFR, upper_95 = q975_rel_CFR))),
-  tableS4_sensitivity_summary = sens_table
+  S3Text_tableA_sensitivity = sens_table
 )
 
 readme <- tibble(
@@ -932,11 +932,11 @@ readme <- tibble(
     "Case-fatality rate among reported cases (%) and relative case-fatality rate by period and age group, posterior mean and 95% CrI (Fig 4, right)",
     "Seasonal multiplier by province, period and month, posterior median and 95% CrI (Fig 5)",
     "Seasonal pattern features, assigned pattern and posterior membership probability by province and period (Fig 5)",
-    "Cluster validity metrics for K = 1-8 (Figure S2)",
-    "Annual FOI by province and year under each sensitivity scenario, posterior median and 95% CrI (Figure S3)",
-    "Reporting proportion by health region and year under each sensitivity scenario, posterior median and 95% CrI (Figure S4)",
-    "Relative susceptibility and relative case-fatality rate by period and age group under each sensitivity scenario, posterior mean and 95% CrI (Figure S5)",
-    "Convergence and key estimates relative to baseline for each sensitivity scenario (Table S4.1)"
+    "Cluster validity metrics for K = 1-8 (Supplementary Fig. S2)",
+    "Annual FOI by province and year under each sensitivity scenario, posterior median and 95% CrI (Supplementary Fig. S3)",
+    "Reporting proportion by health region and year under each sensitivity scenario, posterior median and 95% CrI (Supplementary Fig. S4)",
+    "Relative susceptibility and relative case-fatality rate by period and age group under each sensitivity scenario, posterior mean and 95% CrI (Supplementary Fig. S5)",
+    "Convergence and key estimates relative to baseline for each sensitivity scenario (Table A in Supplementary Text S3)"
   )
 )
 

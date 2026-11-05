@@ -8,8 +8,8 @@ fig4_relative_susceptibility,"Relative susceptibility by period and age group, p
 fig4_case_fatality,"Case-fatality rate among reported cases (%) and relative case-fatality rate by period and age group, posterior mean and 95% CrI (Fig 4, right)"
 fig5_seasonal_multiplier,"Seasonal multiplier by province, period and month, posterior median and 95% CrI (Fig 5)"
 fig5_seasonal_patterns,"Seasonal pattern features, assigned pattern and posterior membership probability by province and period (Fig 5)"
-figS2_cluster_validity,Cluster validity metrics for K = 1-8 (Figure S2)
-figS3_sensitivity_foi,"Annual FOI by province and year under each sensitivity scenario, posterior median and 95% CrI (Figure S3)"
-figS4_sensitivity_reporting,"Reporting proportion by health region and year under each sensitivity scenario, posterior median and 95% CrI (Figure S4)"
-figS5_sensitivity_age,"Relative susceptibility and relative case-fatality rate by period and age group under each sensitivity scenario, posterior mean and 95% CrI (Figure S5)"
-tableS4_sensitivity_summary,Convergence and key estimates relative to baseline for each sensitivity scenario (Table S4.1)
+figS2_cluster_validity,Cluster validity metrics for K = 1-8 (Supplementary Fig. S2)
+figS3_sensitivity_foi,"Annual FOI by province and year under each sensitivity scenario, posterior median and 95% CrI (Supplementary Fig. S3)"
+figS4_sensitivity_reporting,"Reporting proportion by health region and year under each sensitivity scenario, posterior median and 95% CrI (Supplementary Fig. S4)"
+figS5_sensitivity_age,"Relative susceptibility and relative case-fatality rate by period and age group under each sensitivity scenario, posterior mean and 95% CrI (Supplementary Fig. S5)"
+S3Text_tableA_sensitivity,Convergence and key estimates relative to baseline for each sensitivity scenario (Table A in Supplementary Text S3)
